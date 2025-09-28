@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ingress
+  namespace: k8s-hw
+  annotations:
+    # Если используете nginx-ingress: установите класс (для современных контроллеров можно ingressClassName ниже)
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    # Пример, если нужен rewrite (не требуется сейчас):
+    # nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: k8s-hw.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: app-service
+                port:
+                  number: 80
+  # Раскомментируйте блок TLS при наличии сертификата/Secret
+  # tls:
+  #   - hosts:
+  #       - k8s-hw.local
+  #     secretName: k8s-hw-tls

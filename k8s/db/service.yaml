@@ -13,3 +13,34 @@ spec:
       protocol: TCP
   selector:
     app: postgres
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-svc
+  namespace: k8s-hw
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-nodeport-svc
+  namespace: k8s-hw
+spec:
+  type: NodePort
+  selector:
+    app: postgres
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+      protocol: TCP
+      nodePort: 30432
