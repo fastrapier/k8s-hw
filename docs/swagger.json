@@ -85,7 +85,7 @@
         "tags": [
           "healthcheck"
         ],
-        "summary": "Readiness check.",
+        "summary": "Readiness check: учитывает время прогрева и готовность БД (если сконфигурирована).",
         "operationId": "readyz",
         "responses": {
           "200": {

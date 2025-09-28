@@ -62,5 +62,8 @@ func (c *Client) InsertRequest(ctx context.Context) (id int64, createdAt time.Ti
 	return
 }
 
+// Ping проверяет доступность БД.
+func (c *Client) Ping(ctx context.Context) error { return c.pool.Ping(ctx) }
+
 // Close закрывает пул.
 func (c *Client) Close() { c.pool.Close() }
