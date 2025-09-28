@@ -1,0 +1,9 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "k8s-hw API (stub)",
+    "version": "0.0.0-stub",
+    "description": "Stub swagger spec. Run 'make swagger' to regenerate full specification."
+  },
+  "paths": {}
+}

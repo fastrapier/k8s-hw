@@ -1,0 +1,26 @@
+# Binaries and build artifacts
+bin/
+*.exe
+*.out
+*.test
+
+# Cache / OS
+.DS_Store
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+
+# Local runtime artifacts
+server.pid
+.env
+
+# Logs
+*.log
+
+# Swagger spec:
+# internal/api/swagger.json НЕ игнорируем, т.к. нужен для go:embed и должен существовать при сборке.
+# Если хотите не коммитить сгенерированный файл — оставьте заглушку и настройте CI генерировать перед build.
+
+
