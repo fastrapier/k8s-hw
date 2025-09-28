@@ -1,19 +1,25 @@
 # k8s-hw
 
-Минимальный HTTP сервис на Go со следующими возможностями:
+Минимальный HTTP сервис на Go + демонстрация Kubernetes (Deployment, StatefulSet Postgres, PVC, CronJob, Ingress с HTTPS) со следующими возможностями:
 - Стандартный net/http
 - Graceful shutdown (SIGINT/SIGTERM)
 - Liveness `/healthz` и Readiness `/readyz` ("warming" первую секунду / настраивается)
 - Версия приложения `/version` (через ldflags + версия Go runtime)
 - Отдача значения переменной окружения `/test-env`
-- Автогенерация Swagger спецификации (goswagger) + `/swagger.json` + встроенный Swagger UI `/swagger`
-- Multi-stage Docker image (финальный бинарь `app` под non-root пользователем)
-- Встраивание (embed) swagger.json (через go:embed)
+- Автогенерация Swagger спецификации (go-swagger) + `/swagger.json` + встроенный Swagger UI `/swagger` (schemes: http, https)
+- Multi-stage Docker image (финальный бинарь под non-root)
+- Встраивание (embed) swagger.json (go:embed)
 - Unit-тесты для основных эндпоинтов
 - Конфигурация через env (префикс `APP_`)
-- Работа с Kubernetes Secret (`/secret`, маскированный пароль)
-- Запись тестового файла в PVC: POST `/pvc-test` (создаёт файл; имя включает pod name при нескольких репликах)
+- Работа с Kubernetes Secret (`/secret`, маскирование пароля)
+- Запись тестового файла в PVC: POST `/pvc-test` (имя включает Pod name)
 - Подключение к Postgres и запись отметки запроса: POST `/db/requests`
+- Отдельный образ миграций + Kubernetes Job для миграций
+- CronJob (каждую минуту) — вставляет запись в таблицу `cron_runs`
+- Ingress + auto self‑signed TLS (доступ: `https://k8s-hw.local`)
+- Авто генерация / удаление локального самоподписанного сертификата (создаётся при deploy, удаляется при undeploy)
+
+> Пример учебный, не прод: self-signed TLS, отсутствует авто‑rotate секрета, нет продового hardening.
 
 ## Структура
 ```
@@ -22,174 +28,159 @@
 ├── README.md
 ├── go.mod / go.sum
 ├── main.go
+├── certs/                     # (создаётся при deploy: tls.key/tls.crt; очищается при undeploy)
 ├── docker/
-│   ├── app.Dockerfile              # образ приложения
-│   └── migrations.Dockerfile       # образ миграций (golang-migrate)
+│   ├── app.Dockerfile         # образ приложения
+│   ├── migrations.Dockerfile  # образ миграций (golang-migrate)
+│   └── cron.Dockerfile        # образ для CronJob
+├── cmd/
+│   └── cronjob/main.go        # код CronJob (один запуск -> INSERT в cron_runs)
 ├── scripts/
 │   ├── gen-dashboard-token.sh
-│   └── migrations-entrypoint.sh    # entrypoint миграционного образа
+│   └── migrations-entrypoint.sh
 ├── migrations/
-│   └── 0001_create_requests_table.up.sql
+│   ├── 0001_create_requests_table.up.sql
+│   └── 0002_create_cron_runs_table.up.sql
 ├── docs/
 │   ├── swagger.go
 │   ├── swagger_embed.go
 │   └── swagger.json
 ├── internal/
-│   ├── api/ (meta + responses + server)
-│   ├── config/ (envconfig)
-│   ├── handler/ (эндпоинты и readiness)
-│   └── db/ (pgx pool, без авто-миграций)
+│   ├── api/
+│   ├── config/
+│   ├── handler/
+│   └── db/
 ├── k8s/
 │   ├── namespace.yaml
-│   ├── pvc.yaml
+│   ├── pvc.yaml                # PVC для приложения
 │   ├── app/
 │   │   ├── config-map.yaml
-│   │   ├── deployment.yaml
 │   │   ├── secret.yaml
-│   │   └── service.yaml
+│   │   ├── service.yaml
+│   │   ├── deployment.yaml
+│   │   ├── cronjob.yaml        # CronJob (*/1 * * * *)
+│   │   └── ingress.yaml        # Ingress + TLS
 │   └── db/
 │       ├── config-map.yaml
-│       ├── db.yaml
-│       ├── migrations-job.yaml     # Job для применения миграций
 │       ├── secrets.yaml
-│       └── service.yaml
+│       ├── service.yaml        # headless + обычный + nodePort
+│       ├── db.yaml             # StatefulSet (реплики: 2)
+│       └── migrations-job.yaml # Job миграций
 └── bin/ (build артефакты)
 ```
 
-## Требования
-- Go 1.21+
-- `kubectl` (для `make dashboard-token` и деплоя)
-- Docker (сборка образа)
-- Kubernetes кластер (ожидается контекст `docker-desktop`)
-- (Опционально) Postgres доступный из Pod (см. k8s/db/* манифесты)
-
-## Конфигурация через переменные окружения (префикс APP_)
-| Переменная | Назначение | Значение по умолчанию |
-|-----------|------------|-----------------------|
+## Переменные окружения (префикс APP_)
+| Переменная | Назначение | По умолчанию |
+|-----------|------------|--------------|
 | APP_PORT | Порт HTTP | 8080 |
-| APP_READINESS_WARMUP_SECONDS | Время (сек) до готовности (/readyz) | 1 |
-| APP_SHUTDOWN_TIMEOUT_SECONDS | Таймаут graceful shutdown (сек) | 10 |
-| APP_CONFIG_MAP_ENV_VAR | Значение, выдаваемое в /test-env | (пусто) |
-| APP_DATA_DIR | Каталог для данных / PVC | /var/lib/k8s-test-backend/data |
-| APP_POD_NAME | Имя пода (в Kubernetes через Downward API) | (пусто) |
-| APP_SECRET_USERNAME | Имя пользователя (из Secret) | (пусто) |
-| APP_SECRET_PASSWORD | Пароль (из Secret) | (пусто) |
+| APP_READINESS_WARMUP_SECONDS | Прогрев (`warming`) | 1 |
+| APP_SHUTDOWN_TIMEOUT_SECONDS | Graceful shutdown | 10 |
+| APP_CONFIG_MAP_ENV_VAR | Значение для `/test-env` | (пусто) |
+| APP_DATA_DIR | Каталог для PVC | /var/lib/k8s-test-backend/data |
+| APP_POD_NAME | Имя пода (Downward API) | (пусто) |
+| APP_SECRET_USERNAME | Пользователь (Secret) | (пусто) |
+| APP_SECRET_PASSWORD | Пароль (Secret) | (пусто) |
 | APP_POSTGRES_HOST | Хост Postgres | localhost |
 | APP_POSTGRES_PORT | Порт Postgres | 5432 |
-| APP_POSTGRES_USER | Пользователь Postgres | (пусто) |
-| APP_POSTGRES_PASSWORD | Пароль Postgres | (пусто) |
-| APP_POSTGRES_DB | Имя БД | (пусто) |
+| APP_POSTGRES_USER | Пользователь | (пусто) |
+| APP_POSTGRES_PASSWORD | Пароль | (пусто) |
+| APP_POSTGRES_DB | БД | (пусто) |
 
-## Примечание по БД
-Приложение больше не создаёт таблицы автоматически. Все изменения схемы выполняются через миграционную Kubernetes Job (`k8s-test-backend-migrations`). Если миграции не применены, запрос к `/db/requests` вернёт ошибку уровня БД.
+## База данных / миграции
+- Авто‑создание схемы приложением отсутствует.
+- Все изменения в `migrations/` => образ миграций => Job (`migrations-job`).
+- Таблицы: `requests`, `cron_runs` (вторая наполняется CronJob'ом).
+- Порядок при deploy: Postgres StatefulSet -> миграции -> приложение -> CronJob.
+
+## CronJob
+`k8s/app/cronjob.yaml` выполняется каждую минуту (`*/1 * * * *`):
+- Стартует контейнер из образа `fastrapier1/k8s-test-backend-cron:<VERSION>`
+- Подключается к БД (используя те же секреты/configmap) и вставляет строку в `cron_runs`.
+- Логи можно посмотреть: `kubectl logs job/<generated-cronjob-run> -n k8s-hw`.
+
+## HTTPS (Ingress + self-signed)
+- При `make deploy`:
+  1. Если нет локальных `certs/tls.key` / `certs/tls.crt` — генерируется самоподписанный сертификат (CN=`k8s-hw.local`).
+  2. Создаётся (если отсутствует) secret `k8s-hw-tls`.
+  3. Применяется `ingress.yaml` с TLS.
+- Доступ: `https://k8s-hw.local/` (строка добавляется в `/etc/hosts`).
+- При `make undeploy` секрет и локальные файлы сертификата удаляются.
+- Для доверия (опционально) можно импортировать `certs/tls.crt` в System Keychain (macOS) / доверенные корни.
 
 ## Маршруты
 | Метод | Путь | Описание |
 |-------|------|----------|
 | GET | / | Приветствие |
 | GET | /healthz | Liveness |
-| GET | /readyz | Readiness (прогрев + ожидание БД если настроена) |
-| GET | /version | Версия сервиса |
-| GET | /test-env | Значение из ConfigMap env |
-| GET | /secret | Маскированные секреты |
+| GET | /readyz | Readiness (прогрев + БД) |
+| GET | /version | Версия |
+| GET | /test-env | Значение из ConfigMap |
+| GET | /secret | Секреты (маскированы) |
 | POST | /pvc-test | Создать файл в PVC (опц. `?name=`) |
-| POST | /db/requests | Создать запись в Postgres (timestamp) |
+| POST | /db/requests | Вставка записи в БД |
 | GET | /swagger | Swagger UI |
 | GET | /swagger.json | Swagger спецификация |
 
-### Пример `/pvc-test`
-```
-curl -X POST http://localhost:8080/pvc-test
-curl -X POST "http://localhost:8080/pvc-test?name=myfile.txt"
-```
-Ответ (пример):
-```json
-{
-  "file": "k8s-test-backend-app-6d9c48b6d9-x7kq2-1738143273123456789.txt",
-  "path": "/var/lib/k8s-test-backend/data/k8s-test-backend-app-6d9c48b6d9-x7kq2-...txt",
-  "sizeBytes": 54,
-  "podName": "k8s-test-backend-app-6d9c48b6d9-x7kq2"
-}
-```
-
 ### Пример `/db/requests`
-```
+```bash
 curl -X POST http://localhost:8080/db/requests
 ```
-Ответ (пример):
-```json
-{
-  "id": 42,
-  "createdAt": "2025-09-28T10:15:20.123456Z"
-}
+
+### Пример `/pvc-test`
+```bash
+curl -X POST http://localhost:8080/pvc-test
 ```
-Ошибки:
-- `503 {"error":"db client not initialized"}` — если не сконфигурирован Postgres.
-- `500` — внутренняя ошибка вставки.
 
 ## Быстрый старт (локально)
 ```bash
 make run
 ```
-
-Для локальной проверки Postgres (при наличии docker):
+Postgres (локальный docker):
 ```bash
-docker run --rm -e POSTGRES_PASSWORD=pass -e POSTGRES_USER=user -e POSTGRES_DB=dev -p 5432:5432 postgres:16
-APP_POSTGRES_HOST=127.0.0.1 APP_POSTGRES_USER=user APP_POSTGRES_PASSWORD=pass APP_POSTGRES_DB=dev make run
+docker run --rm -e POSTGRES_PASSWORD=pass -e POSTGRES_USER=user -e POSTGRES_DB=dev -p 5432:5432 postgres:17
+APP_POSTGRES_HOST=127.0.0.1 \
+APP_POSTGRES_USER=user \
+APP_POSTGRES_PASSWORD=pass \
+APP_POSTGRES_DB=dev \
+make run
 ```
 
 ## Swagger
 ```bash
-make swagger   # регенерация swagger.json
+make swagger   # регенерация docs/swagger.json
 ```
-Swagger генерируется автоматически перед build/test (через таргеты Makefile).
+Swagger автоматически строится в целях `build`, `test`, `docker`.
 
 ## Тесты
 ```bash
 make test
 ```
 
-## Сборка / Docker
+## Docker
 ```bash
-make build                     # локальная сборка бинаря
-make docker VERSION=1.2.3      # образ fastrapier1/k8s-test-backend-app:1.2.3
-make docker                    # образ :latest
-```
-Публикация образа:
-```bash
+make docker                # build :latest
+make docker VERSION=1.2.3  # build с тегом
+make docker-push           # push :latest
 make docker-push VERSION=1.2.3
-make docker-push               # push :latest
 ```
-Переменная `IMAGE_REPO` (по умолчанию `fastrapier1/k8s-test-backend-app`) может быть переопределена:
-```bash
-IMAGE_REPO=myregistry.local:5000/k8s-test-backend-app make docker-push
-```
-Локальный запуск:
-```bash
-docker run --rm -p 8080:8080 \
-  -e APP_CONFIG_MAP_ENV_VAR=demo \
-  fastrapier1/k8s-test-backend-app:latest
-```
+Переменные можно переопределить: `IMAGE_REPO=... make docker-push`.
 
-## Миграции
-Образ миграций: `fastrapier1/k8s-test-backend-migrations` (Dockerfile: `docker/migrations.Dockerfile`).
-Job: `k8s/db/migrations-job.yaml` (имя Job: `k8s-test-backend-migrations`).
-
-Цели Makefile:
+## Миграции / Cron образы
 | Цель | Описание |
 |------|----------|
 | docker-migrations | Сборка образа миграций |
-| docker-migrations-push | Push образа миграций |
-| migrations-job | Применение миграций в кластере |
-| deploy | Полный цикл (оба образа + миграции + приложение) |
+| docker-migrations-push | Публикация образа миграций |
+| docker-cron | Сборка образа CronJob |
+| docker-cron-push | Публикация образа CronJob |
+| migrations-job | (Пере)запуск Job миграций (с ожиданием выполнения) |
 
 Добавление миграции:
-1. Создать `migrations/0002_<desc>.up.sql`
-2. (Опц.) `0002_<desc>.down.sql`
-3. `make docker-migrations-push VERSION=next`
-4. `VERSION=next make deploy`
+1. Создать файл `migrations/000X_<desc>.up.sql`
+2. (Опц.) down файл
+3. `make docker-migrations-push VERSION=<v>`
+4. `VERSION=<v> make deploy`
 
-Ручной запуск только миграций:
+Ручной запуск миграций без полного deploy:
 ```bash
 make docker-migrations-push
 make migrations-job
@@ -197,22 +188,47 @@ make migrations-job
 
 ## Kubernetes деплой
 ```bash
-make deploy            # :latest
-make deploy VERSION=1.2.3
+make deploy                 # деплой (latest)
+make deploy VERSION=1.2.3   # деплой с тегом
 ```
-Требования: контекст `docker-desktop`, docker login.
+Шаги внутри (упрощённо): namespace -> Postgres -> PVC -> миграции -> приложение -> CronJob -> cert -> ingress -> вывод pod'ов.
 
-## Readiness
-`/readyz`:
-1. Прогрев → `503 {"ready":"warming"}`
-2. БД (если конфиг задан): `db-connecting` / `db-ping-fail`
-3. Готово → `200 {"ready":"true"}`
-
-## Работа с PVC
-- Динамический провижининг (default StorageClass)
-- Общая PVC для всех реплик Deployment
-
-## Очистка
+После деплоя:
 ```bash
-make clean
+curl -k -H 'Host: k8s-hw.local' https://127.0.0.1/healthz
 ```
+(Флаг `-k` из-за self-signed; можно импортировать certs/tls.crt и убрать `-k`).
+
+## Readiness логика
+`/readyz` возвращает статусы:
+- `warming` — ещё идёт прогрев
+- `db-connecting` / `db-ping-fail` — проблемы с БД
+- `true` — готово
+
+## PVC
+- Один PVC `k8s-test-backend-pvc` монтируется в Deployment
+- Файлы создаются через POST `/pvc-test`
+
+## Ingress / HTTPS
+Повторно: автоматическая генерация сертификата при `deploy`, удаление при `undeploy`.
+
+## Очистка / Удаление
+```bash
+make undeploy       # удаляет всё в ns k8s-hw + секрет TLS + локальные certs
+make undeploy-full  # дополнительно удаляет namespace ingress-nginx
+make clean          # локальные бинарь + swagger.json
+```
+
+## Dashboard токен (опционально)
+```bash
+make dashboard-token
+```
+
+## Замечания / улучшения (IDEAS)
+- Добавить оператор Postgres вместо ручного StatefulSet
+- Перейти на OpenAPI 3 (servers вместо schemes)
+- Helm chart / kustomize для параметризации тегов образов
+- Переключение CronJob расписания через переменную окружения / значения ConfigMap
+
+---
+**License:** MIT

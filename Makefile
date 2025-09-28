@@ -12,6 +12,10 @@ INGRESS_NAME ?= app-ingress
 INGRESS_HOST ?= k8s-hw.local
 K8S_CONTEXT ?= docker-desktop
 INGRESS_CONTROLLER_MANIFEST ?= https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.3/deploy/static/provider/cloud/deploy.yaml
+TLS_SECRET_NAME ?= k8s-hw-tls
+CERTS_DIR ?= certs
+TLS_KEY_FILE ?= $(CERTS_DIR)/tls.key
+TLS_CRT_FILE ?= $(CERTS_DIR)/tls.crt
 SWAGGER_JSON = docs/swagger.json
 SWAGGER_BIN = $(shell go env GOPATH)/bin/swagger
 LDFLAGS = -X k8s-hw/internal/handler.Version=$(VERSION)
@@ -133,9 +137,28 @@ deploy: docker-push docker-migrations-push docker-cron-push
 	@$(KCTL_NS) rollout status deployment/$(APP_NAME) --timeout=180s
 	@printf '%b\n' "$(P_STEP) Применение CronJob$(RESET)"
 	@$(KCTL_NS) apply -f k8s/app/cronjob.yaml
+	@$(MAKE) .deploy-cert
 	@$(MAKE) ingress
 	@printf '%b\n' "$(P_OK) Deploy завершён$(RESET)"
 	@$(KCTL_NS) get pods -l app=$(APP_NAME)
+
+.deploy-cert:
+	@printf '%b\n' "$(P_STEP) Проверка локального TLS сертификата $(TLS_KEY_FILE)/$(TLS_CRT_FILE)$(RESET)"
+	@if [ ! -f $(TLS_KEY_FILE) ] || [ ! -f $(TLS_CRT_FILE) ]; then \
+		printf '%b\n' "$(P_STEP) Генерация self-signed сертификата (CN=$(INGRESS_HOST))$(RESET)"; \
+		mkdir -p $(CERTS_DIR); \
+		openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout $(TLS_KEY_FILE) -out $(TLS_CRT_FILE) -subj "/CN=$(INGRESS_HOST)/O=LocalDev" >/dev/null 2>&1; \
+		printf '%b\n' "$(P_OK) Созданы $(TLS_KEY_FILE) $(TLS_CRT_FILE)$(RESET)"; \
+	else \
+		printf '%b\n' "$(P_INFO) Локальные сертификаты уже существуют$(RESET)"; \
+	fi
+	@if ! $(KCTL_NS) get secret $(TLS_SECRET_NAME) >/dev/null 2>&1; then \
+		printf '%b\n' "$(P_STEP) Создание Kubernetes TLS секрета $(TLS_SECRET_NAME)$(RESET)"; \
+		$(KCTL_NS) create secret tls $(TLS_SECRET_NAME) --key $(TLS_KEY_FILE) --cert $(TLS_CRT_FILE); \
+		printf '%b\n' "$(P_OK) TLS secret $(TLS_SECRET_NAME) создан$(RESET)"; \
+	else \
+		printf '%b\n' "$(P_INFO) TLS secret $(TLS_SECRET_NAME) уже существует$(RESET)"; \
+	fi
 
 ingress:
 	@printf '%b\n' "$(P_INFO) Ingress context=$(K8S_CONTEXT) host=$(INGRESS_HOST)$(RESET)"
@@ -151,7 +174,7 @@ ingress:
 	@$(KCTL_NS) get ingress $(INGRESS_NAME)
 	@printf '%b\n' "$(P_STEP) Добавление записи в /etc/hosts (sudo)$(RESET)"
 	@LINE_HOST="$(INGRESS_HOST)"; if grep -q "$$LINE_HOST" /etc/hosts; then printf '%b\n' "$(P_INFO) /etc/hosts уже содержит $$LINE_HOST$(RESET)"; else echo "127.0.0.1 $$LINE_HOST" | sudo tee -a /etc/hosts >/dev/null; fi
-	@printf '%b\n' "$(P_OK) Ingress готов: http://$(INGRESS_HOST)/$(RESET)"
+	@printf '%b\n' "$(P_OK) Ingress готов: https://$(INGRESS_HOST)/$(RESET)"
 
 undeploy:
 	@printf '%b\n' "$(P_INFO) UNDEPLOY context=$(K8S_CONTEXT) ns=$(K8S_NAMESPACE)$(RESET)"
@@ -162,12 +185,21 @@ undeploy:
 	- @$(KCTL_NS) delete -f k8s/app/service.yaml --ignore-not-found
 	- @$(KCTL_NS) delete -f k8s/app/secret.yaml --ignore-not-found
 	- @$(KCTL_NS) delete -f k8s/app/config-map.yaml --ignore-not-found
+	- @$(KCTL_NS) delete secret $(TLS_SECRET_NAME) --ignore-not-found
 	- @$(KCTL_NS) delete job $(MIGRATIONS_JOB_NAME) --ignore-not-found
 	- @$(KCTL_NS) delete -f k8s/db/db.yaml --ignore-not-found
 	- @$(KCTL_NS) delete -f k8s/db/service.yaml --ignore-not-found
 	- @$(KCTL_NS) delete -f k8s/db/secrets.yaml --ignore-not-found
 	- @$(KCTL_NS) delete -f k8s/db/config-map.yaml --ignore-not-found
 	- @$(KCTL_NS) delete -f k8s/pvc.yaml --ignore-not-found
+	@printf '%b\n' "$(P_STEP) Очистка локальных TLS файлов$(RESET)"
+	@if [ -f $(TLS_KEY_FILE) ] || [ -f $(TLS_CRT_FILE) ]; then \
+		rm -f $(TLS_KEY_FILE) $(TLS_CRT_FILE); \
+		printf '%b\n' "$(P_OK) Удалены $(TLS_KEY_FILE) $(TLS_CRT_FILE)$(RESET)"; \
+	else \
+		printf '%b\n' "$(P_INFO) Локальных TLS файлов нет$(RESET)"; \
+	fi
+	@if [ -d $(CERTS_DIR) ] && [ -z "`ls -A $(CERTS_DIR)`" ]; then rmdir $(CERTS_DIR) 2>/dev/null || true; fi
 	@LINE_HOST="$(INGRESS_HOST)"; \
 	printf '%b\n' "$(P_STEP) Очистка /etc/hosts от $$LINE_HOST (если есть)$(RESET)"; \
 	if grep -q "$$LINE_HOST" /etc/hosts; then \

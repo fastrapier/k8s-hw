@@ -1,20 +1,37 @@
-# Binaries and build artifacts
+# Local self-signed TLS certificates (generated during `make deploy`)
+certs/
+
+# Go build artifacts
 bin/
 *.exe
-*.out
+*.exe~
+*.dll
+*.so
+*.dylib
 *.test
+*.out
 
-# Cache / OS
-.DS_Store
-
-# IDE / Editor
-.idea/
-.vscode/
-*.swp
-
-# Local runtime artifacts
-server.pid
-.env
+# Coverage / profiling
+coverage.*
+*.coverprofile
+*.cov
 
 # Logs
 *.log
+
+# Editor / IDE
+.idea/
+.vscode/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Env / local config (add if you start using them)
+.env
+.env.local
+
+# Temporary
+*.swp
+*~
