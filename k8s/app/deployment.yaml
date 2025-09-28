@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: k8s-test-backend-app
-          image: k8s-test-backend-app:latest
+          image: fastrapier1/k8s-test-backend-app:latest
           imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:
@@ -58,9 +58,9 @@ spec:
                   name: postgres-secrets
             - name: APP_POSTGRES_USER
               valueFrom:
-                  secretKeyRef:
-                      key: username
-                      name: postgres-secrets
+                secretKeyRef:
+                  key: username
+                  name: postgres-secrets
             - name: APP_POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:

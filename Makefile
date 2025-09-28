@@ -1,12 +1,14 @@
 APP_NAME = k8s-test-backend-app
 VERSION ?= latest
+IMAGE_REPO ?= fastrapier1/k8s-test-backend-app
+IMAGE = $(IMAGE_REPO):$(VERSION)
 SWAGGER_JSON = docs/swagger.json
 SWAGGER_BIN = $(shell go env GOPATH)/bin/swagger
 LDFLAGS = -X k8s-hw/internal/handler.Version=$(VERSION)
 K8S_NAMESPACE = k8s-hw
 CURRENT_CONTEXT = $(shell kubectl config current-context 2>/dev/null)
 
-.PHONY: all swagger build run clean docker test dashboard-token deploy undeploy k8s-apply
+.PHONY: all swagger build run clean docker docker-push test dashboard-token deploy undeploy k8s-apply
 
 all: build
 
@@ -33,7 +35,15 @@ clean:
 # Использование: make docker VERSION=1.2.3
 
 docker: swagger
-	docker build --build-arg VERSION=$(VERSION) -t $(APP_NAME):$(VERSION) .
+	@echo "Сборка образа $(IMAGE)"
+	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE) .
+
+# Публикация образа в Docker Hub (нужен docker login)
+# Использование: make docker-push VERSION=1.2.3
+
+docker-push: docker
+	@echo "Публикация образа $(IMAGE)"
+	docker push $(IMAGE)
 
 # Применение всех Kubernetes манифестов (требуется контекст docker-desktop)
 # Использование: make deploy VERSION=1.2.3
@@ -42,16 +52,16 @@ docker: swagger
 # 3. Обновление образа в Deployment
 # 4. Ожидание завершения rollout
 
-deploy: docker
+deploy: docker-push
 	@if [ "$(CURRENT_CONTEXT)" != "docker-desktop" ]; then \
 		echo "ОШИБКА: kubectl context должен быть 'docker-desktop' (текущий: $(CURRENT_CONTEXT))" >&2; exit 1; \
 	fi
-	@echo "Применение манифестов в namespace $(K8S_NAMESPACE) с образом версии $(VERSION)";
+	@echo "Применение манифестов в namespace $(K8S_NAMESPACE) c образом $(IMAGE)";
 	kubectl apply -f k8s/namespace.yaml
 	kubectl apply -f k8s/db
 	kubectl apply -f k8s/pvc.yaml
 	kubectl apply -f k8s/app
-	kubectl set image deployment/$(APP_NAME) $(APP_NAME)=$(APP_NAME):$(VERSION) -n $(K8S_NAMESPACE) --record || true
+	kubectl set image deployment/$(APP_NAME) $(APP_NAME)=$(IMAGE) -n $(K8S_NAMESPACE) --record || true
 	kubectl rollout status deployment/$(APP_NAME) -n $(K8S_NAMESPACE) --timeout=120s
 	@echo "Готово. Pods:";
 	kubectl get pods -n $(K8S_NAMESPACE) -l app=$(APP_NAME)

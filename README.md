@@ -144,28 +144,50 @@ make test
 
 ## Сборка / Docker
 ```bash
-make build
-make docker          # соберёт образ с VERSION=latest
-VERSION=1.2.3 make docker
+make build                     # локальная сборка бинаря
+make docker VERSION=1.2.3      # соберёт образ fastrapier1/k8s-test-backend-app:1.2.3
+make docker                    # соберёт образ с тегом :latest
 ```
-Запуск образа:
+Публикация образа в Docker Hub (нужен `docker login`):
 ```bash
-docker run --rm -p 8080:8080 -e APP_CONFIG_MAP_ENV_VAR=demo k8s-hw:latest
+make docker-push VERSION=1.2.3
+make docker-push               # push :latest
+```
+Переменная `IMAGE_REPO` (по умолчанию `fastrapier1/k8s-test-backend-app`) может быть переопределена:
+```bash
+IMAGE_REPO=myregistry.local:5000/k8s-test-backend-app make docker-push
+```
+Локальный запуск собранного образа:
+```bash
+docker run --rm -p 8080:8080 \
+  -e APP_CONFIG_MAP_ENV_VAR=demo \
+  fastrapier1/k8s-test-backend-app:latest
 ```
 
-## Kubernetes деплой (dynamic PVC)
+## Kubernetes деплой (dynamic PVC + удалённый образ)
+Полный цикл (сборка, push, применение манифестов, rollout):
 ```bash
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/pvc.yaml
-kubectl apply -f k8s/app/secret.yaml
-kubectl apply -f k8s/app/config-map.yaml
-kubectl apply -f k8s/app/deployment.yaml
-kubectl apply -f k8s/app/service.yaml
+make deploy                    # использует :latest
+make deploy VERSION=1.2.3      # использует тег 1.2.3
 ```
-Проверить:
+Требования:
+- kubectl context = docker-desktop (Makefile проверяет)
+- Выполнен `docker login` для репозитория `fastrapier1`
+
+Под капотом `make deploy` выполняет:
+1. `make docker` (сборка) → `make docker-push` (push образа)
+2. `kubectl apply` всех манифестов (`k8s/namespace.yaml`, `k8s/db`, `k8s/pvc.yaml`, `k8s/app`)
+3. `kubectl set image` для `Deployment/k8s-test-backend-app`
+4. Ожидает rollout (`kubectl rollout status`)
+
+Проверка:
 ```bash
 kubectl get pods -n k8s-hw -l app=k8s-test-backend-app
-kubectl exec -n k8s-hw deploy/k8s-test-backend-app -- curl -s -X POST http://localhost:8080/pvc-test
+kubectl logs -n k8s-hw deploy/k8s-test-backend-app | head
+```
+Удаление ресурсов:
+```bash
+make undeploy
 ```
 
 ## Получение токена для Kubernetes Dashboard
