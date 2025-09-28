@@ -18,31 +18,51 @@
 ## Структура
 ```
 .
+├── Dockerfile
+├── Makefile
+├── README.md
+├── go.mod
+├── go.sum
 ├── main.go
+├── docs/
+│   ├── swagger.go            # отдача swagger.json и UI хендлеры
+│   ├── swagger_embed.go      # embed swagger.json
+│   └── swagger.json          # генерируется (заглушка в репо / перегенерируется make swagger)
 ├── internal/
-│   └── api/
-│       ├── server.go
-│       ├── responses.go
-│       ├── swagger_embed.go
-│       ├── swagger.json         # генерируется goswagger'ом (заглушка в репо)
-│       └── doc.go
-├── scripts/
-│   └── gen-dashboard-token.sh
+│   ├── api/
+│   │   ├── meta.go           # swagger:meta + общая информация
+│   │   ├── responses.go      # структуры swagger:response
+│   │   └── server.go         # сборка http.ServeMux
+│   ├── config/
+│   │   └── config.go         # загрузка env (envconfig)
+│   ├── handler/
+│   │   ├── base.go           # hello/version/db insert
+│   │   ├── cfg.go            # InitConfig, глобальные параметры
+│   │   ├── db.go             # InsertRequest handler
+│   │   ├── healthcheck.go    # /healthz /readyz
+│   │   ├── pvc.go            # /pvc-test
+│   │   └── secrets.go        # /secret
+│   └── db/
+│       └── db.go             # pgx pool, миграция (таблица requests)
 ├── k8s/
 │   ├── namespace.yaml
-│   ├── pvc.yaml                 # динамический PVC (default StorageClass)
-│   └── app/
-│       ├── deployment.yaml
-│       ├── service.yaml
-│       ├── secret.yaml
-│       └── config-map.yaml
-├── Makefile
-├── Dockerfile
-├── go.mod / go.sum
-└── README.md
+│   ├── pvc.yaml
+│   ├── app/
+│   │   ├── config-map.yaml
+│   │   ├── deployment.yaml
+│   │   ├── secret.yaml
+│   │   └── service.yaml
+│   └── db/
+│       ├── config-map.yaml
+│       ├── db.yaml           # StatefulSet Postgres
+│       ├── secrets.yaml
+│       └── service.yaml
+├── scripts/
+│   └── gen-dashboard-token.sh
+└── bin/                      # (генерируется) бинарь после make build
 ```
 
-(Статический `pv.yaml` удалён: теперь используется динамический провижининг через default StorageClass кластера `docker-desktop`).
+(Статический pv удалён: используется динамический PVC.)
 
 ## Требования
 - Go 1.21+
