@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -19,6 +21,8 @@ var (
 	configMapVal   string
 	secretUsername string
 	secretPassword string
+	dataDir        string
+	podName        string
 )
 
 // InitConfig инициализирует внутренние параметры из config.Config
@@ -27,6 +31,8 @@ func InitConfig(cfg config.Config) {
 	configMapVal = cfg.ConfigMapEnvVar
 	secretUsername = cfg.SecretUsername
 	secretPassword = cfg.SecretPassword
+	dataDir = cfg.DataDir
+	podName = cfg.PodName
 	startTime = time.Now()
 }
 
@@ -116,6 +122,55 @@ func secret(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+// swagger:route POST /pvc-test pvcTest pvcTest
+// Creates a test file inside the mounted PVC data directory.
+// responses:
+//
+//	201: pvcTestResponse
+func pvcTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	if dataDir == "" {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "dataDir not configured"})
+		return
+	}
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("mkdir: %v", err)})
+		return
+	}
+
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		pn := podName
+		if pn == "" {
+			pn = "unknown-pod"
+		}
+		name = fmt.Sprintf("%s-%d.txt", pn, time.Now().UnixNano())
+	}
+	fullPath := filepath.Join(dataDir, name)
+	content := fmt.Sprintf("pod=%s created at %s\n", podName, time.Now().Format(time.RFC3339Nano))
+	if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("write: %v", err)})
+		return
+	}
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("stat: %v", err)})
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"file":      name,
+		"path":      fullPath,
+		"sizeBytes": info.Size(),
+		"podName":   podName,
+	})
+}
+
 // NewMux возвращает готовый роутер с инициализированной конфигурацией
 func NewMux(cfg config.Config) *http.ServeMux {
 	InitConfig(cfg)
@@ -129,5 +184,6 @@ func NewMux(cfg config.Config) *http.ServeMux {
 	mux.HandleFunc("/swagger.json", swaggerJSON)
 	mux.HandleFunc("/swagger", swaggerUI)
 	mux.HandleFunc("/swagger/", swaggerUI)
+	mux.HandleFunc("/pvc-test", pvcTest)
 	return mux
 }

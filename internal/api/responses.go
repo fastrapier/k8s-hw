@@ -55,6 +55,18 @@ type secretResponse struct {
 	} `json:"body"`
 }
 
+// swagger:response pvcTestResponse
+// PVC test file creation result.
+type pvcTestResponse struct {
+	// in: body
+	Body struct {
+		File      string `json:"file"`
+		Path      string `json:"path"`
+		SizeBytes int64  `json:"sizeBytes"`
+		PodName   string `json:"podName"`
+	} `json:"body"`
+}
+
 // dummy usage to silence linters about unused types (they are used by swagger annotations)
 var _ = []any{
 	(*helloResponse)(nil),
@@ -63,4 +75,5 @@ var _ = []any{
 	(*readinessResponse)(nil),
 	(*versionResponse)(nil),
 	(*secretResponse)(nil),
+	(*pvcTestResponse)(nil),
 }

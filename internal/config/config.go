@@ -15,6 +15,8 @@ import (
 //   APP_CONFIG_MAP_ENV_VAR (string)         - значение для /test-env (default пусто)
 //   APP_SECRET_USERNAME (string)            - (из k8s Secret) имя пользователя (optional)
 //   APP_SECRET_PASSWORD (string)            - (из k8s Secret) пароль (optional)
+//   APP_DATA_DIR (string)                   - директория для данных / PVC (default /var/lib/k8s-test-backend/data)
+//   APP_POD_NAME (string)                   - имя пода
 
 type Config struct {
 	Port                   string `envconfig:"PORT" default:"8080"`
@@ -23,6 +25,8 @@ type Config struct {
 	ConfigMapEnvVar        string `envconfig:"CONFIG_MAP_ENV_VAR" default:""`
 	SecretUsername         string `envconfig:"SECRET_USERNAME" default:""`
 	SecretPassword         string `envconfig:"SECRET_PASSWORD" default:""`
+	DataDir                string `envconfig:"DATA_DIR" default:"/var/lib/k8s-test-backend/data"`
+	PodName                string `envconfig:"POD_NAME" default:""`
 }
 
 // Load читает окружение с префиксом APP_.

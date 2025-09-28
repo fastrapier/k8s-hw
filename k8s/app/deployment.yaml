@@ -8,7 +8,7 @@ metadata:
     app: k8s-test-backend-app
     version: latest
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: k8s-test-backend-app
@@ -37,6 +37,10 @@ spec:
                 secretKeyRef:
                   name: k8s-test-backend-app-secret
                   key: password
+            - name: APP_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
           ports:
             - containerPort: 8080
           readinessProbe:
@@ -55,6 +59,13 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 3
             failureThreshold: 3
+          volumeMounts:
+            - name: app-data
+              mountPath: /var/lib/k8s-test-backend/data
+      volumes:
+        - name: app-data
+          persistentVolumeClaim:
+            claimName: k8s-test-backend-pvc
       restartPolicy: Always
   strategy:
     rollingUpdate:
