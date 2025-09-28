@@ -153,7 +153,7 @@ wait $PID
 ## Версия через ldflags
 Флаг линковки:
 ```
--X k8s-hw/internal/api.Version=<value>
+-X k8s-hw/internal/api.VersionHandler=<value>
 ```
 
 ## Readiness

@@ -19,12 +19,12 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 COPY . .
 
 # Генерация swagger спецификации
-RUN /go/bin/swagger generate spec -o internal/api/swagger.json --scan-models
+RUN /go/bin/swagger generate spec -o docs/swagger.json --scan-models
 
 # Сборка бинаря
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go build -ldflags "-s -w -X k8s-hw/internal/api.Version=${VERSION}" -o /out/app .
+    go build -ldflags "-s -w -X k8s-hw/internal/api.VersionHandler=${VERSION}" -o /out/app .
 
 # --- Runtime stage ---
 FROM alpine:3.20

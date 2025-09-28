@@ -1,6 +1,6 @@
 APP_NAME = k8s-test-backend-app
 VERSION ?= latest
-SWAGGER_JSON = internal/api/swagger.json
+SWAGGER_JSON = docs/swagger.json
 SWAGGER_BIN = $(shell go env GOPATH)/bin/swagger
 LDFLAGS = -X k8s-hw/internal/api.Version=$(VERSION)
 

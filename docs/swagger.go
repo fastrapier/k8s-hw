@@ -1,10 +1,11 @@
-package api
+package docs
 
-import "net/http"
+import (
+	"net/http"
+)
 
-// swagger:route GET /swagger.json swagger swaggerJSON
-// Returns swagger spec.
-func swaggerJSON(w http.ResponseWriter, _ *http.Request) {
+// SwaggerJSON Returns swagger spec.
+func SwaggerJSON(w http.ResponseWriter, _ *http.Request) {
 	if len(swaggerSpec) == 0 {
 		http.Error(w, "swagger spec not embedded", http.StatusInternalServerError)
 		return
@@ -13,9 +14,8 @@ func swaggerJSON(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write(swaggerSpec)
 }
 
-// swagger:route GET /swagger swagger swaggerUI
-// Returns swagger UI HTML page.
-func swaggerUI(w http.ResponseWriter, _ *http.Request) {
+// SwaggerUI Returns swagger UI HTML page.
+func SwaggerUI(w http.ResponseWriter, _ *http.Request) {
 	html := `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><title>Swagger UI</title>
 <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
 <style>body{margin:0;padding:0;}#swagger-ui{box-sizing:border-box;}</style></head>

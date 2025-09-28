@@ -1,6 +1,28 @@
 {
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "schemes": [
+    "http"
+  ],
   "swagger": "2.0",
-  "info": {},
+  "info": {
+    "description": "K8s HW API демонстрирует health/readiness, version, secrets, PVC тест и встроенный swagger UI.\nИспользует конфигурацию через переменные окружения, graceful shutdown и динамический PVC.",
+    "title": "Package classification K8s HW API.",
+    "contact": {
+      "name": "Dev Team",
+      "email": "fastrapier1@yandex.rul"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "http://opensource.org/licenses/MIT"
+    },
+    "version": "1.1.0"
+  },
+  "basePath": "/",
   "paths": {
     "/": {
       "get": {
@@ -70,24 +92,6 @@
             "$ref": "#/responses/secretResponse"
           }
         }
-      }
-    },
-    "/swagger": {
-      "get": {
-        "tags": [
-          "swagger"
-        ],
-        "summary": "Returns swagger UI HTML page.",
-        "operationId": "swaggerUI"
-      }
-    },
-    "/swagger.json": {
-      "get": {
-        "tags": [
-          "swagger"
-        ],
-        "summary": "Returns swagger spec.",
-        "operationId": "swaggerJSON"
       }
     },
     "/test-env": {

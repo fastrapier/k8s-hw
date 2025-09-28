@@ -1,4 +1,4 @@
-package api
+package docs
 
 import (
 	_ "embed"
@@ -13,7 +13,7 @@ func init() {
 	if len(swaggerSpec) > 0 {
 		return
 	}
-	paths := []string{"internal/api/swagger.json", "swagger.json"}
+	paths := []string{"docs/swagger.json", "swagger.json"}
 	for _, p := range paths {
 		if b, err := os.ReadFile(p); err == nil {
 			swaggerSpec = b

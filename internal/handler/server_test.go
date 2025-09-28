@@ -1,4 +1,4 @@
-package api
+package handler
 
 import (
 	"encoding/json"
@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"k8s-hw/internal/api"
 	"k8s-hw/internal/config"
 )
 
@@ -26,7 +27,7 @@ func performRequest(t *testing.T, mux *http.ServeMux, method, path string) *http
 }
 
 func TestHealthz(t *testing.T) {
-	mux := NewMux(testConfig())
+	mux := api.NewMux(testConfig())
 	rec := performRequest(t, mux, http.MethodGet, "/healthz")
 	if rec.Code != http.StatusOK {
 		b, _ := io.ReadAll(rec.Body)
@@ -37,7 +38,7 @@ func TestHealthz(t *testing.T) {
 func TestReadyz(t *testing.T) {
 	cfg := testConfig()
 	cfg.ReadinessWarmupSeconds = 2
-	mux := NewMux(cfg)
+	mux := api.NewMux(cfg)
 	SetStartTime(time.Now()) // just started, should be warming
 	if rec := performRequest(t, mux, http.MethodGet, "/readyz"); rec.Code != http.StatusServiceUnavailable {
 		b, _ := io.ReadAll(rec.Body)
@@ -52,7 +53,7 @@ func TestReadyz(t *testing.T) {
 }
 
 func TestVersion(t *testing.T) {
-	mux := NewMux(testConfig())
+	mux := api.NewMux(testConfig())
 	rec := performRequest(t, mux, http.MethodGet, "/version")
 	if rec.Code != http.StatusOK {
 		b, _ := io.ReadAll(rec.Body)
@@ -64,7 +65,7 @@ func TestVersion(t *testing.T) {
 }
 
 func TestSwaggerJSON(t *testing.T) {
-	mux := NewMux(testConfig())
+	mux := api.NewMux(testConfig())
 	rec := performRequest(t, mux, http.MethodGet, "/swagger.json")
 	if rec.Code != http.StatusOK {
 		b, _ := io.ReadAll(rec.Body)
@@ -79,7 +80,7 @@ func TestSecret(t *testing.T) {
 	cfg := testConfig()
 	cfg.SecretUsername = "developer"
 	cfg.SecretPassword = "password"
-	mux := NewMux(cfg)
+	mux := api.NewMux(cfg)
 	rec := performRequest(t, mux, http.MethodGet, "/secret")
 	if rec.Code != http.StatusOK {
 		b, _ := io.ReadAll(rec.Body)
