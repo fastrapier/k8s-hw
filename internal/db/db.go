@@ -16,12 +16,10 @@ type Client struct {
 }
 
 // New создаёт пул подключений к Postgres на основе конфигурации.
-// Требуются поля: Host, Port, User, Pass, DB.
 func New(ctx context.Context, pc config.Postgres) (*Client, error) {
 	if pc.Host == "" || pc.User == "" || pc.DB == "" {
 		return nil, fmt.Errorf("postgres config incomplete (host/user/db required)")
 	}
-	// password может быть пустой (например, trust auth в dev)
 	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable pool_max_conns=5", pc.Host, pc.Port, pc.User, pc.Pass, pc.DB)
 	cfg, err := pgxpool.ParseConfig(connStr)
 	if err != nil {
@@ -33,24 +31,7 @@ func New(ctx context.Context, pc config.Postgres) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create pool: %w", err)
 	}
-	c := &Client{pool: pool}
-	if err := c.init(ctx); err != nil {
-		pool.Close()
-		return nil, err
-	}
-	return c, nil
-}
-
-// init выполняет создание необходимых таблиц.
-func (c *Client) init(ctx context.Context) error {
-	_, err := c.pool.Exec(ctx, `CREATE TABLE IF NOT EXISTS requests(
-		id BIGSERIAL PRIMARY KEY,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-	)`)
-	if err != nil {
-		return fmt.Errorf("migrate: %w", err)
-	}
-	return nil
+	return &Client{pool: pool}, nil
 }
 
 // InsertRequest вставляет новую запись и возвращает id и timestamp.

@@ -2,13 +2,16 @@ APP_NAME = k8s-test-backend-app
 VERSION ?= latest
 IMAGE_REPO ?= fastrapier1/k8s-test-backend-app
 IMAGE = $(IMAGE_REPO):$(VERSION)
+MIGRATIONS_IMAGE_REPO ?= fastrapier1/k8s-test-backend-migrations
+MIGRATIONS_IMAGE = $(MIGRATIONS_IMAGE_REPO):$(VERSION)
+MIGRATIONS_JOB_NAME = k8s-test-backend-migrations
 SWAGGER_JSON = docs/swagger.json
 SWAGGER_BIN = $(shell go env GOPATH)/bin/swagger
 LDFLAGS = -X k8s-hw/internal/handler.Version=$(VERSION)
 K8S_NAMESPACE = k8s-hw
 CURRENT_CONTEXT = $(shell kubectl config current-context 2>/dev/null)
 
-.PHONY: all swagger build run clean docker docker-push test dashboard-token deploy undeploy k8s-apply
+.PHONY: all swagger build run clean docker docker-push docker-migrations docker-migrations-push test dashboard-token deploy undeploy migrations-job
 
 all: build
 
@@ -31,58 +34,89 @@ clean:
 	rm -rf bin
 	rm -f $(SWAGGER_JSON)
 
-# Сборка Docker-образа
+# Сборка Docker-образа приложения
 # Использование: make docker VERSION=1.2.3
 
 docker: swagger
-	@echo "Сборка образа $(IMAGE)"
-	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE) .
+	@echo "Сборка образа приложения $(IMAGE) (docker/app.Dockerfile)"
+	docker build -f docker/app.Dockerfile --build-arg VERSION=$(VERSION) -t $(IMAGE) .
 
-# Публикация образа в Docker Hub (нужен docker login)
-# Использование: make docker-push VERSION=1.2.3
+# Публикация образа приложения
 
 docker-push: docker
-	@echo "Публикация образа $(IMAGE)"
+	@echo "Публикация образа приложения $(IMAGE)"
 	docker push $(IMAGE)
 
-# Применение всех Kubernetes манифестов (требуется контекст docker-desktop)
-# Использование: make deploy VERSION=1.2.3
-# 1. Сборка образа (docker-desktop использует общий демон -> образ виден кластеру)
-# 2. Применение манифестов (namespace, db, pvc, app)
-# 3. Обновление образа в Deployment
-# 4. Ожидание завершения rollout
+# Сборка Docker-образа миграций (golang-migrate + migrations/*.sql)
+# Использование: make docker-migrations VERSION=1.2.3
 
-deploy: docker-push
+docker-migrations:
+	@echo "Сборка образа миграций $(MIGRATIONS_IMAGE) (docker/migrations.Dockerfile)"
+	docker build -f docker/migrations.Dockerfile -t $(MIGRATIONS_IMAGE) .
+
+# Публикация образа миграций
+
+docker-migrations-push: docker-migrations
+	@echo "Публикация образа миграций $(MIGRATIONS_IMAGE)"
+	docker push $(MIGRATIONS_IMAGE)
+
+# Запуск (пере)создания Kubernetes Job для миграций
+# 1. Удаляем старый job (если был)
+# 2. Применяем манифест
+# 3. Патчим image с текущим тегом
+# 4. Ждём завершения (успех или ошибка)
+
+migrations-job:
 	@if [ "$(CURRENT_CONTEXT)" != "docker-desktop" ]; then \
 		echo "ОШИБКА: kubectl context должен быть 'docker-desktop' (текущий: $(CURRENT_CONTEXT))" >&2; exit 1; \
 	fi
-	@echo "Применение манифестов в namespace $(K8S_NAMESPACE) c образом $(IMAGE)";
+	@echo "Применение миграций (образ: $(MIGRATIONS_IMAGE))"
+	kubectl delete job $(MIGRATIONS_JOB_NAME) -n $(K8S_NAMESPACE) --ignore-not-found
+	kubectl apply -f k8s/db/migrations-job.yaml
+	kubectl patch job $(MIGRATIONS_JOB_NAME) -n $(K8S_NAMESPACE) --type='json' -p='[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"$(MIGRATIONS_IMAGE)"}]'
+	@echo "Ожидание завершения StatefulSet Postgres (если разворачивается впервые)"
+	kubectl rollout status statefulset/postgres-sts -n $(K8S_NAMESPACE) --timeout=300s || echo "WARN: rollout status postgres-sts не успешен (может быть уже готов)"
+	@echo "Ожидание выполнения job миграций..."
+	kubectl wait --for=condition=complete --timeout=180s job/$(MIGRATIONS_JOB_NAME) -n $(K8S_NAMESPACE) || (echo "Миграции не завершились успешно" && kubectl logs job/$(MIGRATIONS_JOB_NAME) -n $(K8S_NAMESPACE) ; exit 1)
+	@echo "Миграции применены"
+
+# Полный деплой: build+push обоих образов, манифесты, миграции, приложение
+
+deploy: docker-push docker-migrations-push
+	@if [ "$(CURRENT_CONTEXT)" != "docker-desktop" ]; then \
+		echo "ОШИБКА: kubectl context должен быть 'docker-desktop' (текущий: $(CURRENT_CONTEXT))" >&2; exit 1; \
+	fi
+	@echo "Применение основных манифестов (namespace/db/pvc)"
 	kubectl apply -f k8s/namespace.yaml
-	kubectl apply -f k8s/db
+	kubectl apply -f k8s/db/config-map.yaml
+	kubectl apply -f k8s/db/secrets.yaml
+	kubectl apply -f k8s/db/service.yaml
+	kubectl apply -f k8s/db/db.yaml
 	kubectl apply -f k8s/pvc.yaml
+	$(MAKE) migrations-job
+	@echo "Применение application манифестов"
 	kubectl apply -f k8s/app
 	kubectl set image deployment/$(APP_NAME) $(APP_NAME)=$(IMAGE) -n $(K8S_NAMESPACE) --record || true
-	kubectl rollout status deployment/$(APP_NAME) -n $(K8S_NAMESPACE) --timeout=120s
+	kubectl rollout status deployment/$(APP_NAME) -n $(K8S_NAMESPACE) --timeout=180s
 	@echo "Готово. Pods:";
 	kubectl get pods -n $(K8S_NAMESPACE) -l app=$(APP_NAME)
 
-# Удаление всех ресурсов (обратно к чистому состоянию). Удаление namespace последним.
+# Удаление всех ресурсов (обратно к чистому состоянию)
+
 undeploy:
 	@if [ "$(CURRENT_CONTEXT)" != "docker-desktop" ]; then \
 		echo "ОШИБКА: kubectl context должен быть 'docker-desktop' (текущий: $(CURRENT_CONTEXT))" >&2; exit 1; \
 	fi
-	@echo "Удаление ресурсов в namespace $(K8S_NAMESPACE)";
+	@echo "Удаление ресурсов в namespace $(K8S_NAMESPACE)"
 	- kubectl delete -f k8s/app -n $(K8S_NAMESPACE) --ignore-not-found
+	- kubectl delete job $(MIGRATIONS_JOB_NAME) -n $(K8S_NAMESPACE) --ignore-not-found
 	- kubectl delete -f k8s/db -n $(K8S_NAMESPACE) --ignore-not-found
 	- kubectl delete -f k8s/pvc.yaml -n $(K8S_NAMESPACE) --ignore-not-found
-	@echo "Удаление namespace (это удалит оставшиеся ресурсы)...";
+	@echo "Удаление namespace..."
 	- kubectl delete -f k8s/namespace.yaml --ignore-not-found
 	@echo "Undeploy завершён."
 
-# Генерация (или повторное использование) долгоживущего токена для Kubernetes Dashboard (ServiceAccount в kube-system)
-# Использование: make dashboard-token
-# Выводит токен в stdout.
-# Требуется текущий kubectl context = docker-desktop.
+# Токен для Kubernetes Dashboard
 
 dashboard-token:
 	@chmod +x scripts/gen-dashboard-token.sh

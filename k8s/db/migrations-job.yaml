@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k8s-test-backend-migrations
+  namespace: k8s-hw
+  labels:
+    app: k8s-test-backend-app
+    component: migrations
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: k8s-test-backend-app
+        component: migrations
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: fastrapier1/k8s-test-backend-migrations:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: APP_POSTGRES_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: db-configmap
+                  key: host
+            - name: APP_POSTGRES_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: db-configmap
+                  key: port
+            - name: APP_POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: database
+            - name: APP_POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: username
+            - name: APP_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: password

@@ -18,32 +18,27 @@
 ## Структура
 ```
 .
-├── Dockerfile
 ├── Makefile
 ├── README.md
-├── go.mod
-├── go.sum
+├── go.mod / go.sum
 ├── main.go
+├── docker/
+│   ├── app.Dockerfile              # образ приложения
+│   └── migrations.Dockerfile       # образ миграций (golang-migrate)
+├── scripts/
+│   ├── gen-dashboard-token.sh
+│   └── migrations-entrypoint.sh    # entrypoint миграционного образа
+├── migrations/
+│   └── 0001_create_requests_table.up.sql
 ├── docs/
-│   ├── swagger.go            # отдача swagger.json и UI хендлеры
-│   ├── swagger_embed.go      # embed swagger.json
-│   └── swagger.json          # генерируется (заглушка в репо / перегенерируется make swagger)
+│   ├── swagger.go
+│   ├── swagger_embed.go
+│   └── swagger.json
 ├── internal/
-│   ├── api/
-│   │   ├── meta.go           # swagger:meta + общая информация
-│   │   ├── responses.go      # структуры swagger:response
-│   │   └── server.go         # сборка http.ServeMux
-│   ├── config/
-│   │   └── config.go         # загрузка env (envconfig)
-│   ├── handler/
-│   │   ├── base.go           # hello/version/db insert
-│   │   ├── cfg.go            # InitConfig, глобальные параметры
-│   │   ├── db.go             # InsertRequest handler
-│   │   ├── healthcheck.go    # /healthz /readyz
-│   │   ├── pvc.go            # /pvc-test
-│   │   └── secrets.go        # /secret
-│   └── db/
-│       └── db.go             # pgx pool, миграция (таблица requests)
+│   ├── api/ (meta + responses + server)
+│   ├── config/ (envconfig)
+│   ├── handler/ (эндпоинты и readiness)
+│   └── db/ (pgx pool, без авто-миграций)
 ├── k8s/
 │   ├── namespace.yaml
 │   ├── pvc.yaml
@@ -54,15 +49,12 @@
 │   │   └── service.yaml
 │   └── db/
 │       ├── config-map.yaml
-│       ├── db.yaml           # StatefulSet Postgres
+│       ├── db.yaml
+│       ├── migrations-job.yaml     # Job для применения миграций
 │       ├── secrets.yaml
 │       └── service.yaml
-├── scripts/
-│   └── gen-dashboard-token.sh
-└── bin/                      # (генерируется) бинарь после make build
+└── bin/ (build артефакты)
 ```
-
-(Статический pv удалён: используется динамический PVC.)
 
 ## Требования
 - Go 1.21+
@@ -88,13 +80,8 @@
 | APP_POSTGRES_PASSWORD | Пароль Postgres | (пусто) |
 | APP_POSTGRES_DB | Имя БД | (пусто) |
 
-При старте сервис создаёт (idempotent) таблицу `requests`:
-```sql
-CREATE TABLE IF NOT EXISTS requests(
-  id BIGSERIAL PRIMARY KEY,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
+## Примечание по БД
+Приложение больше не создаёт таблицы автоматически. Все изменения схемы выполняются через миграционную Kubernetes Job (`k8s-test-backend-migrations`). Если миграции не применены, запрос к `/db/requests` вернёт ошибку уровня БД.
 
 ## Маршруты
 | Метод | Путь | Описание |
@@ -165,10 +152,10 @@ make test
 ## Сборка / Docker
 ```bash
 make build                     # локальная сборка бинаря
-make docker VERSION=1.2.3      # соберёт образ fastrapier1/k8s-test-backend-app:1.2.3
-make docker                    # соберёт образ с тегом :latest
+make docker VERSION=1.2.3      # образ fastrapier1/k8s-test-backend-app:1.2.3
+make docker                    # образ :latest
 ```
-Публикация образа в Docker Hub (нужен `docker login`):
+Публикация образа:
 ```bash
 make docker-push VERSION=1.2.3
 make docker-push               # push :latest
@@ -177,98 +164,55 @@ make docker-push               # push :latest
 ```bash
 IMAGE_REPO=myregistry.local:5000/k8s-test-backend-app make docker-push
 ```
-Локальный запуск собранного образа:
+Локальный запуск:
 ```bash
 docker run --rm -p 8080:8080 \
   -e APP_CONFIG_MAP_ENV_VAR=demo \
   fastrapier1/k8s-test-backend-app:latest
 ```
 
-## Kubernetes деплой (dynamic PVC + удалённый образ)
-Полный цикл (сборка, push, применение манифестов, rollout):
-```bash
-make deploy                    # использует :latest
-make deploy VERSION=1.2.3      # использует тег 1.2.3
-```
-Требования:
-- kubectl context = docker-desktop (Makefile проверяет)
-- Выполнен `docker login` для репозитория `fastrapier1`
+## Миграции
+Образ миграций: `fastrapier1/k8s-test-backend-migrations` (Dockerfile: `docker/migrations.Dockerfile`).
+Job: `k8s/db/migrations-job.yaml` (имя Job: `k8s-test-backend-migrations`).
 
-Под капотом `make deploy` выполняет:
-1. `make docker` (сборка) → `make docker-push` (push образа)
-2. `kubectl apply` всех манифестов (`k8s/namespace.yaml`, `k8s/db`, `k8s/pvc.yaml`, `k8s/app`)
-3. `kubectl set image` для `Deployment/k8s-test-backend-app`
-4. Ожидает rollout (`kubectl rollout status`)
+Цели Makefile:
+| Цель | Описание |
+|------|----------|
+| docker-migrations | Сборка образа миграций |
+| docker-migrations-push | Push образа миграций |
+| migrations-job | Применение миграций в кластере |
+| deploy | Полный цикл (оба образа + миграции + приложение) |
 
-Проверка:
+Добавление миграции:
+1. Создать `migrations/0002_<desc>.up.sql`
+2. (Опц.) `0002_<desc>.down.sql`
+3. `make docker-migrations-push VERSION=next`
+4. `VERSION=next make deploy`
+
+Ручной запуск только миграций:
 ```bash
-kubectl get pods -n k8s-hw -l app=k8s-test-backend-app
-kubectl logs -n k8s-hw deploy/k8s-test-backend-app | head
-```
-Удаление ресурсов:
-```bash
-make undeploy
+make docker-migrations-push
+make migrations-job
 ```
 
-## Получение токена для Kubernetes Dashboard
+## Kubernetes деплой
 ```bash
-make dashboard-token
+make deploy            # :latest
+make deploy VERSION=1.2.3
 ```
-(Контекст kubectl должен быть `docker-desktop`). Токен долговечный, можно получить повторно.
-
-## Graceful shutdown
-```bash
-make run &
-PID=$!
-kill -TERM $PID
-wait $PID
-```
-
-## Версия через ldflags
-Флаг линковки:
-```
--X k8s-hw/internal/api.VersionHandler=<value>
-```
+Требования: контекст `docker-desktop`, docker login.
 
 ## Readiness
-`/readyz` теперь учитывает:
-1. Интервал прогрева (`APP_READINESS_WARMUP_SECONDS`). Пока не прошёл — `503 {"ready":"warming"}`.
-2. Если заданы переменные `APP_POSTGRES_HOST`, `APP_POSTGRES_USER`, `APP_POSTGRES_DB` (и опц. пароль) — сервис считает, что БД обязательна для готовности и:
-   - Лениво инициализирует подключение только при первом /readyz после прогрева.
-   - Если соединение/миграция ещё не прошли — `503 {"ready":"db-connecting"}`.
-   - Если подключение есть, но `Ping` неуспешен — `503 {"ready":"db-ping-fail"}`.
-3. Когда всё готово — `200 {"ready":"true"}`.
-
-Благодаря ленивой инициализации и повторным попыткам readiness не возвращает 200 пока DNS для Postgres не начнёт резолвиться и сам Postgres не станет доступен.
-
-### Возможные статусы `/readyz`
-| Статус JSON | HTTP | Значение |
-|-------------|------|----------|
-| {"ready":"warming"} | 503 | Ещё не истёк прогрев. |
-| {"ready":"db-connecting"} | 503 | Пытаемся создать пул + миграция таблицы `requests`. |
-| {"ready":"db-ping-fail"} | 503 | Пул создан, но `Ping` не прошёл (сетевые/DNS/несанкционирован). |
-| {"ready":"true"} | 200 | Сервис готов (и БД доступна если требовалась). |
-
-### Поведение при неуказанной БД
-Если отсутствуют обязательные поля (host/user/db), БД считается «необязательной» и readiness после прогрева сразу станет 200.
-
-### Почему это важно для headless Service
-Headless Service для Postgres может давать NXDOMAIN до появления Endpoints. Теперь приложение:
-- Не падает при старте на ошибке DNS (нет ранней обязательной инициализации).
-- Продолжает возвращать 503 пока DNS/Pod не готовы, обеспечивая корректный rollout в Kubernetes.
+`/readyz`:
+1. Прогрев → `503 {"ready":"warming"}`
+2. БД (если конфиг задан): `db-connecting` / `db-ping-fail`
+3. Готово → `200 {"ready":"true"}`
 
 ## Работа с PVC
-- Используется динамический провижининг (default StorageClass в кластере; в Docker Desktop обычно `docker-desktop`).
-- Одна PVC разделяется всеми репликами Deployment (race conditions допустимы для теста).
-- Для изолированного хранения на реплику — перейти на StatefulSet и volumeClaimTemplates.
+- Динамический провижининг (default StorageClass)
+- Общая PVC для всех реплик Deployment
 
 ## Очистка
 ```bash
 make clean
 ```
-
-## Дальнейшие возможные улучшения
-- StatefulSet для уникального хранилища на под
-- Endpoint для листинга/удаления файлов в PVC
-- Prometheus метрики / ротация логов
-- CI workflow (lint/test/build/push)
