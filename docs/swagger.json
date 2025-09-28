@@ -38,6 +38,20 @@
         }
       }
     },
+    "/db/requests": {
+      "post": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Creates db record with request timestamp.",
+        "operationId": "insertRequest",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/dbInsertResponse"
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -124,6 +138,24 @@
     }
   },
   "responses": {
+    "dbInsertResponse": {
+      "description": "",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "x-go-name": "CreatedAt"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "x-go-name": "ID"
+          }
+        }
+      }
+    },
     "envResponse": {
       "description": "",
       "schema": {

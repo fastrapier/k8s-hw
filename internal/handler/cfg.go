@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"k8s-hw/internal/config"
+	"k8s-hw/internal/db"
 )
 
 // Version VersionHandler задаётся через -ldflags "-X k8s-hw/internal/api.VersionHandler=..."
@@ -19,6 +20,7 @@ var (
 	secretPassword string
 	dataDir        string
 	podName        string
+	pgClient       *db.Client
 )
 
 // InitConfig инициализирует внутренние параметры из config.Config
@@ -31,6 +33,9 @@ func InitConfig(cfg config.Config) {
 	podName = cfg.PodName
 	startTime = time.Now()
 }
+
+// SetDB передаёт и сохраняет клиент Postgres
+func SetDB(c *db.Client) { pgClient = c }
 
 // SetStartTime позволяет тестам переопределять момент запуска для проверки /readyz
 func SetStartTime(t time.Time) { startTime = t }

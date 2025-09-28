@@ -41,6 +41,31 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            - name: APP_POSTGRES_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: db-configmap
+                  key: host
+            - name: APP_POSTGRES_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: db-configmap
+                  key: port
+            - name: APP_POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  key: database
+                  name: postgres-secrets
+            - name: APP_POSTGRES_USER
+              valueFrom:
+                  secretKeyRef:
+                      key: username
+                      name: postgres-secrets
+            - name: APP_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: postgres-secrets
           ports:
             - containerPort: 8080
           readinessProbe:

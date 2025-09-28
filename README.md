@@ -13,6 +13,7 @@
 - Конфигурация через env (префикс `APP_`)
 - Работа с Kubernetes Secret (`/secret`, маскированный пароль)
 - Запись тестового файла в PVC: POST `/pvc-test` (создаёт файл; имя включает pod name при нескольких репликах)
+- Подключение к Postgres и запись отметки запроса: POST `/db/requests`
 
 ## Структура
 ```
@@ -48,6 +49,7 @@
 - `kubectl` (для `make dashboard-token` и деплоя)
 - Docker (сборка образа)
 - Kubernetes кластер (ожидается контекст `docker-desktop`)
+- (Опционально) Postgres доступный из Pod (см. k8s/db/* манифесты)
 
 ## Конфигурация через переменные окружения (префикс APP_)
 | Переменная | Назначение | Значение по умолчанию |
@@ -60,6 +62,19 @@
 | APP_POD_NAME | Имя пода (в Kubernetes через Downward API) | (пусто) |
 | APP_SECRET_USERNAME | Имя пользователя (из Secret) | (пусто) |
 | APP_SECRET_PASSWORD | Пароль (из Secret) | (пусто) |
+| APP_POSTGRES_HOST | Хост Postgres | localhost |
+| APP_POSTGRES_PORT | Порт Postgres | 5432 |
+| APP_POSTGRES_USER | Пользователь Postgres | (пусто) |
+| APP_POSTGRES_PASSWORD | Пароль Postgres | (пусто) |
+| APP_POSTGRES_DB | Имя БД | (пусто) |
+
+При старте сервис создаёт (idempotent) таблицу `requests`:
+```sql
+CREATE TABLE IF NOT EXISTS requests(
+  id BIGSERIAL PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
 
 ## Маршруты
 | Метод | Путь | Описание |
@@ -71,6 +86,7 @@
 | GET | /test-env | Значение из ConfigMap env |
 | GET | /secret | Маскированные секреты |
 | POST | /pvc-test | Создать файл в PVC (опц. `?name=`) |
+| POST | /db/requests | Создать запись в Postgres (timestamp) |
 | GET | /swagger | Swagger UI |
 | GET | /swagger.json | Swagger спецификация |
 
@@ -89,14 +105,30 @@ curl -X POST "http://localhost:8080/pvc-test?name=myfile.txt"
 }
 ```
 
+### Пример `/db/requests`
+```
+curl -X POST http://localhost:8080/db/requests
+```
+Ответ (пример):
+```json
+{
+  "id": 42,
+  "createdAt": "2025-09-28T10:15:20.123456Z"
+}
+```
+Ошибки:
+- `503 {"error":"db client not initialized"}` — если не сконфигурирован Postgres.
+- `500` — внутренняя ошибка вставки.
+
 ## Быстрый старт (локально)
 ```bash
 make run
 ```
 
-С переменными:
+Для локальной проверки Postgres (при наличии docker):
 ```bash
-APP_PORT=9090 APP_CONFIG_MAP_ENV_VAR="hello" make run
+docker run --rm -e POSTGRES_PASSWORD=pass -e POSTGRES_USER=user -e POSTGRES_DB=dev -p 5432:5432 postgres:16
+APP_POSTGRES_HOST=127.0.0.1 APP_POSTGRES_USER=user APP_POSTGRES_PASSWORD=pass APP_POSTGRES_DB=dev make run
 ```
 
 ## Swagger

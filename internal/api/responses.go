@@ -1,5 +1,7 @@
 package api
 
+import "time"
+
 // swagger:response helloResponse
 // Represents greeting message.
 type helloResponse struct {
@@ -67,6 +69,16 @@ type pvcTestResponse struct {
 	} `json:"body"`
 }
 
+// swagger:response dbInsertResponse
+// DB insert result.
+type dbInsertResponse struct {
+	// in: body
+	Body struct {
+		ID        int64     `json:"id"`
+		CreatedAt time.Time `json:"createdAt"`
+	} `json:"body"`
+}
+
 // dummy usage to silence linters about unused types (they are used by swagger annotations)
 var _ = []any{
 	(*helloResponse)(nil),
@@ -76,4 +88,5 @@ var _ = []any{
 	(*versionResponse)(nil),
 	(*secretResponse)(nil),
 	(*pvcTestResponse)(nil),
+	(*dbInsertResponse)(nil),
 }

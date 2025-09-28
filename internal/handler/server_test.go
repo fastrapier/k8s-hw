@@ -1,4 +1,4 @@
-package handler
+package handler_test
 
 import (
 	"encoding/json"
@@ -10,6 +10,7 @@ import (
 
 	"k8s-hw/internal/api"
 	"k8s-hw/internal/config"
+	"k8s-hw/internal/handler"
 )
 
 func testConfig() config.Config {
@@ -39,13 +40,13 @@ func TestReadyz(t *testing.T) {
 	cfg := testConfig()
 	cfg.ReadinessWarmupSeconds = 2
 	mux := api.NewMux(cfg)
-	SetStartTime(time.Now()) // just started, should be warming
+	handler.SetStartTime(time.Now()) // just started, should be warming
 	if rec := performRequest(t, mux, http.MethodGet, "/readyz"); rec.Code != http.StatusServiceUnavailable {
 		b, _ := io.ReadAll(rec.Body)
 		t.Fatalf("expected 503 warming, got %d body=%s", rec.Code, string(b))
 	}
 	// simulate pass of time
-	SetStartTime(time.Now().Add(-3 * time.Second))
+	handler.SetStartTime(time.Now().Add(-3 * time.Second))
 	if rec := performRequest(t, mux, http.MethodGet, "/readyz"); rec.Code != http.StatusOK {
 		b, _ := io.ReadAll(rec.Body)
 		t.Fatalf("expected 200 ready, got %d body=%s", rec.Code, string(b))

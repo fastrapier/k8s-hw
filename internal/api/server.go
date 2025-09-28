@@ -22,5 +22,6 @@ func NewMux(cfg config.Config) *http.ServeMux {
 	mux.HandleFunc("/swagger", docs.SwaggerUI)
 	mux.HandleFunc("/swagger/", docs.SwaggerUI)
 	mux.HandleFunc("/pvc-test", handler.PvcTest)
+	mux.HandleFunc("/db/requests", handler.InsertRequest)
 	return mux
 }

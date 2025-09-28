@@ -19,14 +19,23 @@ import (
 //   APP_POD_NAME (string)                   - имя пода
 
 type Config struct {
-	Port                   string `envconfig:"PORT" default:"8080"`
-	ReadinessWarmupSeconds int    `envconfig:"READINESS_WARMUP_SECONDS" default:"1"`
-	ShutdownTimeoutSeconds int    `envconfig:"SHUTDOWN_TIMEOUT_SECONDS" default:"10"`
-	ConfigMapEnvVar        string `envconfig:"CONFIG_MAP_ENV_VAR" default:""`
-	SecretUsername         string `envconfig:"SECRET_USERNAME" default:""`
-	SecretPassword         string `envconfig:"SECRET_PASSWORD" default:""`
-	DataDir                string `envconfig:"DATA_DIR" default:"/var/lib/k8s-test-backend/data"`
-	PodName                string `envconfig:"POD_NAME" default:""`
+	Port                   string   `envconfig:"PORT" default:"8080"`
+	ReadinessWarmupSeconds int      `envconfig:"READINESS_WARMUP_SECONDS" default:"1"`
+	ShutdownTimeoutSeconds int      `envconfig:"SHUTDOWN_TIMEOUT_SECONDS" default:"10"`
+	ConfigMapEnvVar        string   `envconfig:"CONFIG_MAP_ENV_VAR" default:""`
+	SecretUsername         string   `envconfig:"SECRET_USERNAME" default:""`
+	SecretPassword         string   `envconfig:"SECRET_PASSWORD" default:""`
+	DataDir                string   `envconfig:"DATA_DIR" default:"/var/lib/k8s-test-backend/data"`
+	PodName                string   `envconfig:"POD_NAME" default:""`
+	Postgres               Postgres `envconfig:"POSTGRES"`
+}
+
+type Postgres struct {
+	Host string `envconfig:"HOST" default:"localhost"`
+	Port int    `envconfig:"PORT" default:"5432"`
+	User string `envconfig:"USER" default:""`
+	Pass string `envconfig:"PASSWORD" default:""`
+	DB   string `envconfig:"DB" default:""`
 }
 
 // Load читает окружение с префиксом APP_.
