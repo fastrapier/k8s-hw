@@ -1,9 +1,225 @@
 {
   "swagger": "2.0",
-  "info": {
-    "title": "k8s-hw API (stub)",
-    "version": "0.0.0-stub",
-    "description": "Stub swagger spec. Run 'make swagger' to regenerate full specification."
+  "info": {},
+  "paths": {
+    "/": {
+      "get": {
+        "tags": [
+          "hello"
+        ],
+        "summary": "Returns greeting message.",
+        "operationId": "hello",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/helloResponse"
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "tags": [
+          "healthcheck"
+        ],
+        "summary": "Liveness/health check.",
+        "operationId": "healthz",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/healthzResponse"
+          }
+        }
+      }
+    },
+    "/pvc-test": {
+      "post": {
+        "tags": [
+          "pvcTest"
+        ],
+        "summary": "Creates a test file inside the mounted PVC data directory.",
+        "operationId": "pvcTest",
+        "responses": {
+          "201": {
+            "$ref": "#/responses/pvcTestResponse"
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "tags": [
+          "healthcheck"
+        ],
+        "summary": "Readiness check.",
+        "operationId": "readyz",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/readinessResponse"
+          }
+        }
+      }
+    },
+    "/secret": {
+      "get": {
+        "tags": [
+          "secret"
+        ],
+        "summary": "Returns (masked) secret values injected via environment.",
+        "operationId": "secret",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/secretResponse"
+          }
+        }
+      }
+    },
+    "/swagger": {
+      "get": {
+        "tags": [
+          "swagger"
+        ],
+        "summary": "Returns swagger UI HTML page.",
+        "operationId": "swaggerUI"
+      }
+    },
+    "/swagger.json": {
+      "get": {
+        "tags": [
+          "swagger"
+        ],
+        "summary": "Returns swagger spec.",
+        "operationId": "swaggerJSON"
+      }
+    },
+    "/test-env": {
+      "get": {
+        "tags": [
+          "config-map"
+        ],
+        "summary": "Returns value configured via CONFIG_MAP_ENV_VAR.",
+        "operationId": "testEnv",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/envResponse"
+          }
+        }
+      }
+    },
+    "/version": {
+      "get": {
+        "tags": [
+          "version"
+        ],
+        "summary": "Returns service version \u0026 go runtime.",
+        "operationId": "version",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/versionResponse"
+          }
+        }
+      }
+    }
   },
-  "paths": {}
+  "responses": {
+    "envResponse": {
+      "description": "",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "configMapEnvVar": {
+            "type": "string",
+            "x-go-name": "ConfigMapEnvVar"
+          }
+        }
+      }
+    },
+    "healthzResponse": {
+      "description": "",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "x-go-name": "Status"
+          }
+        }
+      }
+    },
+    "helloResponse": {
+      "description": "",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "x-go-name": "Message"
+          }
+        }
+      }
+    },
+    "pvcTestResponse": {
+      "description": "",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "x-go-name": "File"
+          },
+          "path": {
+            "type": "string",
+            "x-go-name": "Path"
+          },
+          "podName": {
+            "type": "string",
+            "x-go-name": "PodName"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "format": "int64",
+            "x-go-name": "SizeBytes"
+          }
+        }
+      }
+    },
+    "readinessResponse": {
+      "description": "",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "ready": {
+            "type": "string",
+            "x-go-name": "Ready"
+          }
+        }
+      }
+    },
+    "secretResponse": {
+      "description": "",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "x-go-name": "Password"
+          },
+          "username": {
+            "type": "string",
+            "x-go-name": "Username"
+          }
+        }
+      }
+    },
+    "versionResponse": {
+      "description": "",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "x-go-name": "Version"
+          }
+        }
+      }
+    }
+  }
 }

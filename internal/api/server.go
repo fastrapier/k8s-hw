@@ -57,7 +57,7 @@ func hello(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// swagger:route GET /test-env testEnv testEnv
+// swagger:route GET /test-env config-map testEnv
 // Returns value configured via CONFIG_MAP_ENV_VAR.
 // responses:
 //
@@ -68,7 +68,7 @@ func testEnv(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-// swagger:route GET /healthz healthz healthz
+// swagger:route GET /healthz healthcheck healthz
 // Liveness/health check.
 // responses:
 //
@@ -77,7 +77,7 @@ func healthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// swagger:route GET /readyz readiness readiness
+// swagger:route GET /readyz healthcheck readyz
 // Readiness check.
 // responses:
 //

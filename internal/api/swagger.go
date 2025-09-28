@@ -2,6 +2,7 @@ package api
 
 import "net/http"
 
+// swagger:route GET /swagger.json swagger swaggerJSON
 // Returns swagger spec.
 func swaggerJSON(w http.ResponseWriter, _ *http.Request) {
 	if len(swaggerSpec) == 0 {
@@ -12,6 +13,7 @@ func swaggerJSON(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write(swaggerSpec)
 }
 
+// swagger:route GET /swagger swagger swaggerUI
 // Returns swagger UI HTML page.
 func swaggerUI(w http.ResponseWriter, _ *http.Request) {
 	html := `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><title>Swagger UI</title>
