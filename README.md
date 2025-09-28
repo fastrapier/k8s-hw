@@ -15,23 +15,31 @@
 ## Структура
 ```
 .
-├── main.go                     # точка входа (только запуск сервера)
-├── internal/api/               # вся логика HTTP и swagger описания
-│   ├── server.go               # хэндлеры, маршруты, версия
-│   ├── responses.go            # swagger:response структуры
-│   ├── swagger_embed.go        # embed swagger.json
-│   ├── swagger.json            # генерируется (перезаписывается) goswagger'ом
-│   └── doc.go                  # swagger:meta
+├── main.go
+├── internal/
+│   └── api/
+│       ├── server.go
+│       ├── responses.go
+│       ├── swagger_embed.go
+│       ├── swagger.json        # генерируется goswagger'ом (заглушка в репо)
+│       └── doc.go
+├── scripts/
+│   └── gen-dashboard-token.sh  # генерация токена для Kubernetes Dashboard
+├── k8s/                        # k8s манифесты
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   ├── nam.yaml
+│   └── pv.yaml
 ├── Makefile
 ├── Dockerfile
-├── config-map/                 # доп. артефакты (если нужны для k8s)
-├── k8s/                        # манифесты k8s (если есть)
-└── go.mod / go.sum
+├── go.mod / go.sum
+└── README.md
 ```
 
 ## Требования
-- Go 1.21+ (указан 1.24 в go.mod/toolchain — гибко под адаптацию)
-- Установленный `goswagger` (Makefile сам установит при первом вызове `make swagger`)
+- Go 1.21+
+- `kubectl` (для `make dashboard-token`)
+- Docker (для сборки образа)
 
 ## Конфигурация через переменные окружения (префикс APP_)
 | Переменная | Назначение | Значение по умолчанию |
@@ -42,86 +50,71 @@
 | APP_CONFIG_MAP_ENV_VAR | Значение, выдаваемое в /test-env | (пусто) |
 
 ## Быстрый старт (локально)
-Собрать и запустить:
 ```bash
 make run
 ```
-Открыть:
-- http://localhost:8080/          — приветствие
-- http://localhost:8080/healthz   — liveness
-- http://localhost:8080/readyz    — readiness
-- http://localhost:8080/version   — версия
-- http://localhost:8080/test-env  — значение `APP_CONFIG_MAP_ENV_VAR`
-- http://localhost:8080/swagger   — Swagger UI
-- http://localhost:8080/swagger.json — спецификация
+Маршруты:
+- /healthz
+- /readyz
+- /version
+- /test-env
+- /swagger
+- /swagger.json
 
-С кастомными переменными окружения:
+Пример с переменными:
 ```bash
-APP_PORT=9090 \
-APP_READINESS_WARMUP_SECONDS=5 \
-APP_CONFIG_MAP_ENV_VAR="hello from config" \
-make run
+APP_PORT=9090 APP_CONFIG_MAP_ENV_VAR="hello" make run
 ```
 
-## Генерация Swagger вручную
+## Kubernetes Dashboard (токен)
+Получить токен для входа:
 ```bash
-make swagger
+make dashboard-token
 ```
-(Файл затем встраивается при сборке.
-Если нужно обновить — меняйте аннотации и повторяйте `make swagger`.)
+Условие: текущий контекст kubectl = docker-desktop.
+Скрипт создаёт (при необходимости) ServiceAccount, ClusterRoleBinding и Secret с долговечным токеном. Выведите токен ещё раз повторным запуском команды.
+
+## Swagger
+```bash
+make swagger   # регенерация swagger.json
+```
+Swagger генерируется автоматически перед build/test.
 
 ## Тесты
 ```bash
 make test
 ```
-Вывод включает генерацию swagger перед тестами.
 
-## Сборка
+## Сборка / Docker
 ```bash
-make build            # бинарь bin/app
+make build
 VERSION=1.2.3 make build
+make docker
+VERSION=1.2.3 make docker
+```
+Запуск образа:
+```bash
+docker run --rm -p 8080:8080 -e APP_CONFIG_MAP_ENV_VAR=demo app:dev
 ```
 
-## Docker
-Собрать образ:
-```bash
-make docker                   # VERSION=dev (по умолчанию)
-VERSION=1.2.3 make docker     # c конкретной версией
-```
-Запуск контейнера:
-```bash
-docker run --rm -p 8080:8080 \
-  -e APP_CONFIG_MAP_ENV_VAR=demo \
-  app:1.2.3
-```
-
-## Graceful shutdown пример
+## Graceful shutdown
+Пример:
 ```bash
 make run &
 kill -TERM <pid>
 ```
-(В логе появится сообщение об остановке.)
+Сервер корректно завершается за таймаут `APP_SHUTDOWN_TIMEOUT_SECONDS`.
 
-## Версия
-ldflags:
+## Версия через ldflags
+Используется:
 ```
 -X k8s-hw/internal/api.Version=<value>
 ```
-Меняется через переменную VERSION в make / docker.
 
-## Readiness логика
-`/readyz` возвращает 503 (warming) пока не истёк интервал `APP_READINESS_WARMUP_SECONDS`.
-
-## Идеи для расширения
-- `/metrics` (Prometheus)
-- `golangci-lint` + CI
-- Helm chart
-- Middleware (логирование, trace, rate limiting)
+## Readiness
+`/readyz` возвращает 503 пока не истёк интервал `APP_READINESS_WARMUP_SECONDS`.
 
 ## Очистка
 ```bash
 make clean
 ```
-
----
-Сообщите, если требуется добавить CI, метрики или другие функции.

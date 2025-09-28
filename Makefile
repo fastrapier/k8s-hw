@@ -4,7 +4,7 @@ SWAGGER_JSON = internal/api/swagger.json
 SWAGGER_BIN = $(shell go env GOPATH)/bin/swagger
 LDFLAGS = -X k8s-hw/internal/api.Version=$(VERSION)
 
-.PHONY: all swagger build run clean docker test
+.PHONY: all swagger build run clean docker test dashboard-token
 
 all: build
 
@@ -32,3 +32,12 @@ clean:
 
 docker:
 	docker build --build-arg VERSION=$(VERSION) -t $(APP_NAME):$(VERSION) .
+
+# Generate (or reuse) long-lived dashboard login token (ServiceAccount in kube-system)
+# Usage: make dashboard-token
+# Prints token to stdout.
+# Требует текущий kubectl context = docker-desktop.
+
+dashboard-token:
+	@chmod +x scripts/gen-dashboard-token.sh
+	@./scripts/gen-dashboard-token.sh
