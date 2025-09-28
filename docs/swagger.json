@@ -27,7 +27,7 @@
     "/": {
       "get": {
         "tags": [
-          "hello"
+          "core"
         ],
         "summary": "Returns greeting message.",
         "operationId": "hello",
@@ -111,7 +111,7 @@
     "/version": {
       "get": {
         "tags": [
-          "version"
+          "core"
         ],
         "summary": "Returns service version \u0026 go runtime.",
         "operationId": "version",

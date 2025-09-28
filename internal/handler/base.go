@@ -6,7 +6,7 @@ import (
 	"runtime"
 )
 
-// swagger:route GET / hello hello
+// swagger:route GET / core hello
 // Returns greeting message.
 // responses:
 //
@@ -17,7 +17,7 @@ func HelloHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// swagger:route GET /version version version
+// swagger:route GET /version core version
 // Returns service version & go runtime.
 // responses:
 //
