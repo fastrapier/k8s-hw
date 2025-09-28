@@ -45,6 +45,16 @@ type versionResponse struct {
 	} `json:"body"`
 }
 
+// swagger:response secretResponse
+// Secret (masked) values.
+type secretResponse struct {
+	// in: body
+	Body struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	} `json:"body"`
+}
+
 // dummy usage to silence linters about unused types (they are used by swagger annotations)
 var _ = []any{
 	(*helloResponse)(nil),
@@ -52,4 +62,5 @@ var _ = []any{
 	(*healthzResponse)(nil),
 	(*readinessResponse)(nil),
 	(*versionResponse)(nil),
+	(*secretResponse)(nil),
 }

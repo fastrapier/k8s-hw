@@ -13,14 +13,16 @@ import (
 //   APP_READINESS_WARMUP_SECONDS (int)      - время (сек) для /readyz warming (default 1)
 //   APP_SHUTDOWN_TIMEOUT_SECONDS (int)      - таймаут graceful shutdown (default 10)
 //   APP_CONFIG_MAP_ENV_VAR (string)         - значение для /test-env (default пусто)
-//
-// Legacy CONFIG_MAP_ENV_VAR удалён.
+//   APP_SECRET_USERNAME (string)            - (из k8s Secret) имя пользователя (optional)
+//   APP_SECRET_PASSWORD (string)            - (из k8s Secret) пароль (optional)
 
 type Config struct {
 	Port                   string `envconfig:"PORT" default:"8080"`
 	ReadinessWarmupSeconds int    `envconfig:"READINESS_WARMUP_SECONDS" default:"1"`
 	ShutdownTimeoutSeconds int    `envconfig:"SHUTDOWN_TIMEOUT_SECONDS" default:"10"`
 	ConfigMapEnvVar        string `envconfig:"CONFIG_MAP_ENV_VAR" default:""`
+	SecretUsername         string `envconfig:"SECRET_USERNAME" default:""`
+	SecretPassword         string `envconfig:"SECRET_PASSWORD" default:""`
 }
 
 // Load читает окружение с префиксом APP_.

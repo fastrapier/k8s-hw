@@ -14,15 +14,19 @@ import (
 var Version = "latest"
 
 var (
-	startTime    = time.Now()
-	warmupDur    = time.Second
-	configMapVal string
+	startTime      = time.Now()
+	warmupDur      = time.Second
+	configMapVal   string
+	secretUsername string
+	secretPassword string
 )
 
 // InitConfig инициализирует внутренние параметры из config.Config
 func InitConfig(cfg config.Config) {
 	warmupDur = cfg.ReadinessWarmup()
 	configMapVal = cfg.ConfigMapEnvVar
+	secretUsername = cfg.SecretUsername
+	secretPassword = cfg.SecretPassword
 	startTime = time.Now()
 }
 
@@ -92,6 +96,26 @@ func version(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+// swagger:route GET /secret secret secret
+// Returns (masked) secret values injected via environment.
+// responses:
+//
+//	200: secretResponse
+func secret(w http.ResponseWriter, _ *http.Request) {
+	masked := ""
+	if len(secretPassword) > 0 {
+		if len(secretPassword) <= 3 {
+			masked = "***"
+		} else {
+			masked = secretPassword[:1] + "***" + secretPassword[len(secretPassword)-1:]
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"username": secretUsername,
+		"password": masked,
+	})
+}
+
 // NewMux возвращает готовый роутер с инициализированной конфигурацией
 func NewMux(cfg config.Config) *http.ServeMux {
 	InitConfig(cfg)
@@ -101,6 +125,7 @@ func NewMux(cfg config.Config) *http.ServeMux {
 	mux.HandleFunc("/healthz", healthz)
 	mux.HandleFunc("/readyz", readyz)
 	mux.HandleFunc("/version", version)
+	mux.HandleFunc("/secret", secret)
 	mux.HandleFunc("/swagger.json", swaggerJSON)
 	mux.HandleFunc("/swagger", swaggerUI)
 	mux.HandleFunc("/swagger/", swaggerUI)

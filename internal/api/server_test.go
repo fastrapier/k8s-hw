@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -71,5 +72,27 @@ func TestSwaggerJSON(t *testing.T) {
 	}
 	if rec.Body.Len() == 0 {
 		t.Fatalf("swagger json empty")
+	}
+}
+
+func TestSecret(t *testing.T) {
+	cfg := testConfig()
+	cfg.SecretUsername = "developer"
+	cfg.SecretPassword = "password"
+	mux := NewMux(cfg)
+	rec := performRequest(t, mux, http.MethodGet, "/secret")
+	if rec.Code != http.StatusOK {
+		b, _ := io.ReadAll(rec.Body)
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, string(b))
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	if body["username"] != "developer" {
+		t.Fatalf("unexpected username: %+v", body)
+	}
+	if body["password"] != "p***d" { // mask logic: first + *** + last
+		t.Fatalf("unexpected password mask: %s", body["password"])
 	}
 }

@@ -25,9 +25,36 @@ spec:
           imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:
-                name: app-config-map
+                name: k8s-test-backend-app-config-map
+          env:
+            - name: APP_SECRET_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-test-backend-app-secret
+                  key: username
+            - name: APP_SECRET_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-test-backend-app-secret
+                  key: password
           ports:
             - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 1
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
       restartPolicy: Always
   strategy:
     rollingUpdate:
