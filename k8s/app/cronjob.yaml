@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: k8s-test-backend-cron
+  namespace: k8s-hw
+  labels:
+    app: k8s-test-backend-app
+    component: cron
+spec:
+  schedule: "*/1 * * * *" # запускать каждую минуту∆
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: k8s-test-backend-app
+            component: cron
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: cron
+              image: fastrapier1/k8s-test-backend-cron:latest
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: APP_POSTGRES_HOST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: db-configmap
+                      key: host
+                - name: APP_POSTGRES_PORT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: db-configmap
+                      key: port
+                - name: APP_POSTGRES_DB
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-secrets
+                      key: database
+                - name: APP_POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-secrets
+                      key: username
+                - name: APP_POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-secrets
+                      key: password
+

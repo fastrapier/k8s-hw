@@ -43,6 +43,15 @@ func (c *Client) InsertRequest(ctx context.Context) (id int64, createdAt time.Ti
 	return
 }
 
+// InsertCronRun вставляет запись о выполнении cron и возвращает id и executed_at.
+func (c *Client) InsertCronRun(ctx context.Context) (id int64, executedAt time.Time, err error) {
+	row := c.pool.QueryRow(ctx, "INSERT INTO cron_runs DEFAULT VALUES RETURNING id, executed_at")
+	if err = row.Scan(&id, &executedAt); err != nil {
+		return 0, time.Time{}, err
+	}
+	return
+}
+
 // Ping проверяет доступность БД.
 func (c *Client) Ping(ctx context.Context) error { return c.pool.Ping(ctx) }
 

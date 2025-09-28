@@ -5,13 +5,15 @@ IMAGE = $(IMAGE_REPO):$(VERSION)
 MIGRATIONS_IMAGE_REPO ?= fastrapier1/k8s-test-backend-migrations
 MIGRATIONS_IMAGE = $(MIGRATIONS_IMAGE_REPO):$(VERSION)
 MIGRATIONS_JOB_NAME = k8s-test-backend-migrations
+CRON_IMAGE_REPO ?= fastrapier1/k8s-test-backend-cron
+CRON_IMAGE = $(CRON_IMAGE_REPO):$(VERSION)
 SWAGGER_JSON = docs/swagger.json
 SWAGGER_BIN = $(shell go env GOPATH)/bin/swagger
 LDFLAGS = -X k8s-hw/internal/handler.Version=$(VERSION)
 K8S_NAMESPACE = k8s-hw
 CURRENT_CONTEXT = $(shell kubectl config current-context 2>/dev/null)
 
-.PHONY: all swagger build run clean docker docker-push docker-migrations docker-migrations-push test dashboard-token deploy undeploy migrations-job
+.PHONY: all swagger build run clean docker docker-push docker-migrations docker-migrations-push docker-cron docker-cron-push test dashboard-token deploy undeploy migrations-job
 
 all: build
 
@@ -60,6 +62,19 @@ docker-migrations-push: docker-migrations
 	@echo "Публикация образа миграций $(MIGRATIONS_IMAGE)"
 	docker push $(MIGRATIONS_IMAGE)
 
+# Сборка Docker-образа для CronJob
+# Использование: make docker-cron VERSION=1.2.3
+
+docker-cron:
+	@echo "Сборка cron образа $(CRON_IMAGE) (docker/cron.Dockerfile)"
+	docker build -f docker/cron.Dockerfile --build-arg VERSION=$(VERSION) -t $(CRON_IMAGE) .
+
+# Публикация образа для CronJob
+
+docker-cron-push: docker-cron
+	@echo "Публикация cron образа $(CRON_IMAGE)"
+	docker push $(CRON_IMAGE)
+
 # Запуск (пере)создания Kubernetes Job для миграций
 # 1. Удаляем старый job (если был)
 # 2. Применяем манифест
@@ -82,7 +97,7 @@ migrations-job:
 
 # Полный деплой: build+push обоих образов, манифесты, миграции, приложение
 
-deploy: docker-push docker-migrations-push
+deploy: docker-push docker-migrations-push docker-cron-push
 	@if [ "$(CURRENT_CONTEXT)" != "docker-desktop" ]; then \
 		echo "ОШИБКА: kubectl context должен быть 'docker-desktop' (текущий: $(CURRENT_CONTEXT))" >&2; exit 1; \
 	fi
@@ -98,6 +113,9 @@ deploy: docker-push docker-migrations-push
 	kubectl apply -f k8s/app
 	kubectl set image deployment/$(APP_NAME) $(APP_NAME)=$(IMAGE) -n $(K8S_NAMESPACE) --record || true
 	kubectl rollout status deployment/$(APP_NAME) -n $(K8S_NAMESPACE) --timeout=180s
+	@echo "Применение CronJob"
+	kubectl apply -f k8s/app/cronjob.yaml
+	kubectl patch cronjob k8s-test-backend-cron -n $(K8S_NAMESPACE) --type='json' -p='[{"op":"replace","path":"/spec/jobTemplate/spec/template/spec/containers/0/image","value":"$(CRON_IMAGE)"}]'
 	@echo "Готово. Pods:";
 	kubectl get pods -n $(K8S_NAMESPACE) -l app=$(APP_NAME)
 
@@ -108,6 +126,7 @@ undeploy:
 		echo "ОШИБКА: kubectl context должен быть 'docker-desktop' (текущий: $(CURRENT_CONTEXT))" >&2; exit 1; \
 	fi
 	@echo "Удаление ресурсов в namespace $(K8S_NAMESPACE)"
+	- kubectl delete cronjob k8s-test-backend-cron -n $(K8S_NAMESPACE) --ignore-not-found
 	- kubectl delete -f k8s/app -n $(K8S_NAMESPACE) --ignore-not-found
 	- kubectl delete job $(MIGRATIONS_JOB_NAME) -n $(K8S_NAMESPACE) --ignore-not-found
 	- kubectl delete -f k8s/db -n $(K8S_NAMESPACE) --ignore-not-found

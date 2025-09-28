@@ -24,6 +24,7 @@ var (
 	podName        string
 	pgClient       *db.Client
 	postgresCfg    config.Postgres
+	wantDB         bool
 	dbMu           sync.Mutex
 )
 
@@ -36,6 +37,7 @@ func InitConfig(cfg config.Config) {
 	dataDir = cfg.DataDir
 	podName = cfg.PodName
 	postgresCfg = cfg.Postgres
+	wantDB = postgresCfg.User != "" && postgresCfg.DB != "" && postgresCfg.Host != ""
 	startTime = time.Now()
 }
 
@@ -47,6 +49,9 @@ func SetStartTime(t time.Time) { startTime = t }
 
 // ensureDB пытается (лениво) инициализировать клиент, если он требуется и ещё не создан.
 func ensureDB(ctx context.Context) error {
+	if !wantDB { // БД не обязательна — пропускаем
+		return nil
+	}
 	if pgClient != nil { // уже есть
 		return nil
 	}
