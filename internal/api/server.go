@@ -143,15 +143,8 @@ func pvcTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := r.URL.Query().Get("name")
-	if name == "" {
-		pn := podName
-		if pn == "" {
-			pn = "unknown-pod"
-		}
-		name = fmt.Sprintf("%s-%d.txt", pn, time.Now().UnixNano())
-	}
-	fullPath := filepath.Join(dataDir, name)
+	name := fmt.Sprintf("%s-%d.txt", podName, time.Now().UnixNano())
+	fullPath := filepath.Join(dataDir, podName)
 	content := fmt.Sprintf("pod=%s created at %s\n", podName, time.Now().Format(time.RFC3339Nano))
 	if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("write: %v", err)})
