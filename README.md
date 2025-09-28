@@ -94,7 +94,7 @@ VERSION=1.2.3 make docker
 ```
 Запуск образа:
 ```bash
-docker run --rm -p 8080:8080 -e APP_CONFIG_MAP_ENV_VAR=demo app:dev
+docker run --rm -p 8080:8080 -e APP_CONFIG_MAP_ENV_VAR=demo app:latest
 ```
 
 ## Graceful shutdown

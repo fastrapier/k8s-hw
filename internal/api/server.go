@@ -11,7 +11,7 @@ import (
 )
 
 // Version задаётся через -ldflags "-X k8s-hw/internal/api.Version=..."
-var Version = "dev"
+var Version = "latest"
 
 var (
 	startTime    = time.Now()

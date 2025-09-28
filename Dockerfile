@@ -1,29 +1,35 @@
 # --- Build stage ---
 FROM golang:1.24-alpine AS builder
 
-ARG VERSION=dev
+ARG VERSION=latest
+ARG SWAGGER_VERSION=v0.32.3
 ENV CGO_ENABLED=0
 WORKDIR /src
 
-# deps caching
+# 1. Отдельно копируем только go.mod/go.sum чтобы слои с зависимостями и swagger кешировались
 COPY go.mod go.sum ./
 RUN go mod download
 
-# install goswagger (pin)
-RUN go install github.com/go-swagger/go-swagger/cmd/swagger@v0.32.3
+# 2. Установка swagger (используем ARG SWAGGER_VERSION чтобы контролировать инвалидацию кеша)
+# Используем BuildKit cache mounts (если BuildKit выключен, команда всё равно пройдёт как обычная)
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go install github.com/go-swagger/go-swagger/cmd/swagger@${SWAGGER_VERSION}
 
-# copy sources
+# 3. Копируем остальной код (любое изменение в исходниках не ломает слой установки swagger)
 COPY . .
 
-# generate swagger spec inside internal/api
-RUN swagger generate spec -o internal/api/swagger.json --scan-models
+# 4. Генерация swagger спецификации
+RUN /go/bin/swagger generate spec -o internal/api/swagger.json --scan-models
 
-# build binary with version ldflags
-RUN go build -ldflags "-s -w -X k8s-hw/internal/api.Version=${VERSION}" -o /out/app .
+# 5. Сборка бинаря
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -ldflags "-s -w -X k8s-hw/internal/api.Version=${VERSION}" -o /out/app .
 
 # --- Runtime stage ---
 FROM alpine:3.20
-ARG VERSION=dev
+ARG VERSION=latest
 
 RUN adduser -D -u 10001 appuser
 WORKDIR /app
@@ -35,7 +41,5 @@ LABEL org.opencontainers.image.title="k8s-hw" \
 
 EXPOSE 8080
 USER appuser
-
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s CMD wget -q -O - http://localhost:8080/healthz || exit 1
 
 ENTRYPOINT ["./app"]

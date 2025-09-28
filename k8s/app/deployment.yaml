@@ -2,30 +2,30 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: app
+  name: k8s-test-backend-app
   namespace: k8s-hw
   labels:
-    app: k8s-test-app
-    version: v1
+    app: k8s-test-backend-app
+    version: latest
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: k8s-test-app
+      app: k8s-test-backend-app
   template:
     metadata:
-      name: k8s-test-app
+      name: k8s-test-backend-app
       labels:
-        app: k8s-test-app
-        version: v1
+        app: k8s-test-backend-app
+        version: latest
     spec:
       containers:
-        - name: k8s-test-app
-          image: k8s-app:1.0.0
-          env:
-            - name: CONFIG_MAP_ENV_VAR
-              value: testing config map
+        - name: k8s-test-backend-app
+          image: k8s-test-backend-app:latest
           imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: app-config-map
           ports:
             - containerPort: 8080
       restartPolicy: Always

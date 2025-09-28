@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k8s-test-backend-app-config-map
+  namespace: k8s-hw
+data:
+  APP_CONFIG_MAP_ENV_VAR: "testing config map"

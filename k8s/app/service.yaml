@@ -2,9 +2,10 @@ apiVersion: v1
 kind: Service
 metadata:
   name: app-service
+  namespace: k8s-hw
 spec:
   selector:
-    app: k8s-test-app
+    app: k8s-test-backend-app
   ports:
     - protocol: TCP
       port: 80
