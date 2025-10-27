@@ -92,36 +92,89 @@
 - Таблицы: `requests`, `cron_runs` (вторая наполняется CronJob'ом).
 - Порядок при deploy: Postgres StatefulSet -> миграции -> приложение -> CronJob.
 
-### Helm-чарт PostgreSQL
-В каталоге `helm/postgres/` находится Helm-чарт для развёртывания PostgreSQL StatefulSet.
+### Helm-чарты
+Проект содержит полноценные Helm-чарты для развёртывания приложения.
+
+#### Основной чарт (umbrella chart)
+В каталоге `helm/app/` находится основной Helm-чарт, который включает в себя два subchart'а:
+- `postgres` — PostgreSQL StatefulSet с конфигурацией и секретами
+- `backend` — приложение с Deployment, CronJob, миграциями и Ingress
 
 **Структура:**
-- `Chart.yaml` — метаданные чарта
-- `values.yaml` — конфигурация (пароли, реплики, размер storage и т.д.)
-- `templates/` — шаблоны Kubernetes манифестов
+```
+helm/app/
+├── Chart.yaml              # метаданные и зависимости
+├── values.yaml             # конфигурация верхнего уровня
+├── templates/
+│   └── _helpers.tpl
+└── charts/
+    ├── backend/            # subchart для приложения
+    │   ├── Chart.yaml
+    │   ├── values.yaml
+    │   └── templates/      # deployment, service, cronjob, migrations, etc.
+    └── postgres/           # subchart для БД
+        ├── Chart.yaml
+        ├── values.yaml
+        └── templates/      # statefulset, services, secrets, configmap
+```
 
 **Проверка чарта:**
 ```bash
-helm lint helm/postgres/
-helm template test-postgres helm/postgres/ --dry-run
+make helm-lint
+# или
+helm lint helm/app/
 ```
 
-**Установка через Helm (опционально):**
+**Предпросмотр манифестов:**
 ```bash
-helm install postgres helm/postgres/ -n k8s-hw --create-namespace
+make helm-template
+# или
+helm template k8s-hw-app helm/app/ --namespace k8s-hw
+```
+
+**Установка через Helm:**
+```bash
+make helm-install
+# или
+helm install k8s-hw-app helm/app/ -n k8s-hw --create-namespace
 ```
 
 **Обновление:**
 ```bash
-helm upgrade postgres helm/postgres/ -n k8s-hw
+make helm-upgrade VERSION=1.2.3
+# или
+helm upgrade k8s-hw-app helm/app/ -n k8s-hw \
+  --set backend.images.backend.tag=1.2.3 \
+  --set backend.images.migrations.tag=1.2.3 \
+  --set backend.images.cron.tag=1.2.3
 ```
 
 **Удаление:**
 ```bash
-helm uninstall postgres -n k8s-hw
+make helm-uninstall
+# или
+helm uninstall k8s-hw-app -n k8s-hw
 ```
 
-**Примечание:** В текущей реализации `make deploy` использует прямые манифесты k8s/db/, а не Helm-чарт. Helm-чарт предоставлен как альтернативный способ развёртывания БД.
+**Примечания:**
+- Команда `make deploy` использует прямые манифесты из `k8s/`, а не Helm-чарты
+- Для деплоя через Helm используйте `make helm-deploy` (алиас для `helm-install`)
+- Helm-чарты автоматически создают все необходимые ресурсы, включая namespace
+- Backend subchart автоматически ссылается на PostgreSQL secrets и configmap
+- Версии образов можно переопределить через параметр `VERSION` или `--set`
+
+#### Конфигурация subchart'ов
+
+**Backend (helm/app/charts/backend/values.yaml):**
+- Настройки приложения (порты, реплики, образы)
+- Собственные secrets и configmap для приложения
+- Ссылки на PostgreSQL resources через `postgres.configmapName` и `postgres.secretName`
+- Поддержка Deployment, CronJob, миграций и Ingress
+
+**PostgreSQL (helm/app/charts/postgres/values.yaml):**
+- Настройки БД (пользователь, пароль, база данных)
+- Конфигурация StatefulSet (реплики, образ, PVC)
+- Создание трёх типов сервисов (headless, ClusterIP, NodePort)
 
 ## CronJob
 `k8s/app/cronjob.yaml` выполняется каждую минуту (`*/1 * * * *`):

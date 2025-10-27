@@ -1,10 +1,29 @@
 env:
+  # Environment variables from backend's own ConfigMap (var name: configmap key)
   configmap:
-    APP_CONFIG_MAP_ENV_VAR: test-value-from-helm-values
+    APP_CONFIG_MAP_ENV_VAR: APP_CONFIG_MAP_ENV_VAR
+  # Environment variables from backend's own Secret (var name: secret key)
   secrets:
-    username: "developer"
-    password: "password"
+    APP_SECRET_USERNAME: username
+    APP_SECRET_PASSWORD: password
+  # Environment variables from postgres ConfigMap (var name: configmap key)
+  postgresConfigmap:
+    APP_POSTGRES_HOST: host
+    APP_POSTGRES_PORT: port
+  # Environment variables from postgres Secret (var name: secret key)
+  postgresSecrets:
+    APP_POSTGRES_USER: username
+    APP_POSTGRES_PASSWORD: password
+    APP_POSTGRES_DB: database
 
+# Actual data for backend's own ConfigMap
+configmapData:
+  APP_CONFIG_MAP_ENV_VAR: test-value-from-helm-values
+
+# Actual data for backend's own Secret
+secretData:
+  username: developer
+  password: password
 
 port: 8080
 images:
@@ -19,6 +38,7 @@ images:
   migrations:
     name: fastrapier1/k8s-test-backend-migrations
     tag: latest
+    imagePullPolicy: IfNotPresent
 
 replicaCount: 2
 
@@ -26,3 +46,8 @@ strategy:
   rollingUpdate:
     maxUnavailable: 1
   type: RollingUpdate
+
+postgres:
+  # Reference names for postgres resources
+  configmapName: postgres-configmap
+  secretName: postgres-secrets

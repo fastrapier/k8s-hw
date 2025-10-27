@@ -23,17 +23,31 @@ spec:
               imagePullPolicy: {{ .imagePullPolicy | quote }}
               {{ end }}
               env:
-                {{ range $key, $val := .Values.env.configmap }}
+                {{- range $key, $val := .Values.env.configmap }}
                 - name: {{ $key }}
                   valueFrom:
                     configMapKeyRef:
-                      - name: {{ $.Chart.Name }}-configmap
-                        key: {{ $val }}
-                {{ end }}
-                {{ range $key, $val := .Values.env.secrets }}
+                      name: {{ $.Chart.Name }}-configmap
+                      key: {{ $val }}
+                {{- end }}
+                {{- range $key, $val := .Values.env.secrets }}
                 - name: {{ $key }}
-                - valueFrom:
+                  valueFrom:
                     secretKeyRef:
                       name: {{ $.Chart.Name }}-secrets
                       key: {{ $val }}
-                {{ end }}
+                {{- end }}
+                {{- range $key, $val := .Values.env.postgresConfigmap }}
+                - name: {{ $key }}
+                  valueFrom:
+                    configMapKeyRef:
+                      name: {{ $.Values.postgres.configmapName }}
+                      key: {{ $val }}
+                {{- end }}
+                {{- range $key, $val := .Values.env.postgresSecrets }}
+                - name: {{ $key }}
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ $.Values.postgres.secretName }}
+                      key: {{ $val }}
+                {{- end }}

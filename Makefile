@@ -40,7 +40,7 @@ P_OK=$(GREEN)[OK]
 P_ERR=$(RED)[ERR]
 P_BUILD=$(MAGENTA)[BUILD]
 
-.PHONY: all swagger build run clean docker docker-push docker-migrations docker-migrations-push docker-cron docker-cron-push ingress test dashboard-install dashboard-proxy dashboard-url dashboard-token deploy undeploy migrations-job
+.PHONY: all swagger build run clean docker docker-push docker-migrations docker-migrations-push docker-cron docker-cron-push ingress test dashboard-install dashboard-proxy dashboard-url dashboard-token deploy undeploy migrations-job helm-lint helm-template helm-install helm-upgrade helm-uninstall helm-deploy
 
 all: build
 
@@ -217,6 +217,53 @@ undeploy-full: undeploy
 	@printf '%b\n' "$(P_STEP) Дополнительная очистка: удаление ingress-nginx namespace$(RESET)"
 	- @$(KCTL) delete namespace ingress-nginx --ignore-not-found
 	@printf '%b\n' "$(P_OK) Полная очистка завершена (включая ingress-nginx)$(RESET)"
+
+# Helm targets
+HELM_CHART_PATH = helm/app
+HELM_RELEASE_NAME ?= k8s-hw-app
+
+helm-lint:
+	@printf '%b\n' "$(P_INFO) Проверка Helm чарта$(RESET)"
+	@helm lint $(HELM_CHART_PATH)
+	@printf '%b\n' "$(P_OK) Helm lint завершён успешно$(RESET)"
+
+helm-template:
+	@printf '%b\n' "$(P_INFO) Генерация YAML из Helm чарта$(RESET)"
+	@helm template $(HELM_RELEASE_NAME) $(HELM_CHART_PATH) --namespace $(K8S_NAMESPACE)
+
+helm-install: docker-push docker-migrations-push docker-cron-push
+	@printf '%b\n' "$(P_INFO) Установка приложения через Helm$(RESET)"
+	@printf '%b\n' "$(P_INFO) Release: $(HELM_RELEASE_NAME), Namespace: $(K8S_NAMESPACE)$(RESET)"
+	@$(KCTL) apply -f k8s/namespace.yaml
+	@helm install $(HELM_RELEASE_NAME) $(HELM_CHART_PATH) \
+		--namespace $(K8S_NAMESPACE) \
+		--set backend.images.backend.tag=$(VERSION) \
+		--set backend.images.migrations.tag=$(VERSION) \
+		--set backend.images.cron.tag=$(VERSION) \
+		--wait --timeout=5m
+	@printf '%b\n' "$(P_OK) Helm install завершён$(RESET)"
+	@$(KCTL_NS) get pods
+
+helm-upgrade: docker-push docker-migrations-push docker-cron-push
+	@printf '%b\n' "$(P_INFO) Обновление приложения через Helm$(RESET)"
+	@printf '%b\n' "$(P_INFO) Release: $(HELM_RELEASE_NAME), Namespace: $(K8S_NAMESPACE)$(RESET)"
+	@helm upgrade $(HELM_RELEASE_NAME) $(HELM_CHART_PATH) \
+		--namespace $(K8S_NAMESPACE) \
+		--set backend.images.backend.tag=$(VERSION) \
+		--set backend.images.migrations.tag=$(VERSION) \
+		--set backend.images.cron.tag=$(VERSION) \
+		--wait --timeout=5m
+	@printf '%b\n' "$(P_OK) Helm upgrade завершён$(RESET)"
+	@$(KCTL_NS) get pods
+
+helm-uninstall:
+	@printf '%b\n' "$(P_INFO) Удаление приложения через Helm$(RESET)"
+	@helm uninstall $(HELM_RELEASE_NAME) --namespace $(K8S_NAMESPACE) || true
+	@$(KCTL) delete namespace $(K8S_NAMESPACE) --ignore-not-found || true
+	@printf '%b\n' "$(P_OK) Helm uninstall завершён$(RESET)"
+
+helm-deploy: helm-install
+	@printf '%b\n' "$(P_INFO) Helm деплой завершён (используйте helm-upgrade для обновлений)$(RESET)"
 
 dashboard-install:
 	@printf '%b\n' "$(P_INFO) Установка Kubernetes Dashboard$(RESET)"
