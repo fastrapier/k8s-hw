@@ -5,7 +5,7 @@ metadata:
   labels: {{ include "postgres.labels" . | nindent 4 }}
 spec:
   serviceName: {{ .Chart.Name }}-headless-svc
-  replicas: {{ .Values.statefullset.replicas }}
+  replicas: {{ .Values.statefulset.replicas }}
   selector:
     matchLabels: {{ include "postgres.selectorLabels" . | nindent 6 }}
   template:
@@ -14,23 +14,23 @@ spec:
     spec:
       containers:
         - name: {{ .Chart.Name }}
-          {{- with .Values.statefullset.image }}
+          {{- with .Values.statefulset.image }}
           image: {{ printf "%s:%v" .name .tag }}
           imagePullPolicy: {{ .pullPolicy | quote }}
           {{- end }}
           env:
-            {{- range $key, $val := .Values.statefullset.env.value }}
+            {{- range $key, $val := .Values.statefulset.env.value }}
             - name: {{ $key }}
               value: {{ $val | quote }}
             {{- end }}
-            {{- range $key, $val := .Values.statefullset.env.secret }}
+            {{- range $key, $val := .Values.statefulset.env.secret }}
             - name: {{ $key }}
               valueFrom:
                 secretKeyRef:
                   name: {{ $.Chart.Name }}-secrets
                   key: {{ $val }}
             {{- end }}
-            {{- range $key, $val := .Values.statefullset.env.config }}
+            {{- range $key, $val := .Values.statefulset.env.config }}
             - name: {{ $key }}
               valueFrom:
                 configMapKeyRef:
@@ -44,16 +44,16 @@ spec:
               protocol: {{ .protocol }}
             {{- end }}
           volumeMounts:
-            {{- with .Values.statefullset.pvc }}
+            {{- with .Values.statefulset.pvc }}
             - name: {{ .name }}
               mountPath: {{ .mountPath }}
             {{- end }}
   volumeClaimTemplates:
     - metadata:
-        name: {{ .Values.statefullset.pvc.name }}
+        name: {{ .Values.statefulset.pvc.name }}
       spec:
         accessModes:
-          - {{ .Values.statefullset.pvc.accessMode | quote }}
+          - {{ .Values.statefulset.pvc.accessMode | quote }}
         resources:
           requests:
-            storage: {{ .Values.statefullset.pvc.size | quote }}
+            storage: {{ .Values.statefulset.pvc.size | quote }}

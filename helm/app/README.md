@@ -91,7 +91,7 @@ helm install k8s-hw-app helm/app/ \
   --set backend.images.migrations.tag=1.2.3 \
   --set backend.images.cron.tag=1.2.3 \
   --set backend.replicaCount=3 \
-  --set postgres.statefullset.replicas=2
+  --set postgres.statefulset.replicas=2
 ```
 
 ## Обновление
@@ -204,7 +204,7 @@ secret:
 #### StatefulSet конфигурация
 
 ```yaml
-statefullset:
+statefulset:
   replicas: 1
   image:
     name: postgres
