@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Chart.Name }}-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  labels: {{ include "backend.labels" . | nindent 4 }}
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - {{ .Chart.Name }}.local
+      secretName: {{ .Chart.Name }}-tls
+  rules:
+    - host: {{ .Chart.Name }}.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Chart.Name }}-service
+                port:
+                  number: 80

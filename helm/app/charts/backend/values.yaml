@@ -1,0 +1,28 @@
+env:
+  configmap:
+    APP_CONFIG_MAP_ENV_VAR: test-value-from-helm-values
+  secrets:
+    username: "developer"
+    password: "password"
+
+
+port: 8080
+images:
+  backend:
+    name: fastrapier1/k8s-test-backend-app
+    tag: latest
+    imagePullPolicy: IfNotPresent
+  cron:
+    name: fastrapier1/k8s-test-backend-cron
+    tag: latest
+    imagePullPolicy: IfNotPresent
+  migrations:
+    name: fastrapier1/k8s-test-backend-migrations
+    tag: latest
+
+replicaCount: 2
+
+strategy:
+  rollingUpdate:
+    maxUnavailable: 1
+  type: RollingUpdate

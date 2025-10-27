@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Chart.Name }}-cronjob
+  labels: {{ include "backend.labels" . | nindent 4 }}
+spec:
+  schedule: "*/1 * * * *" # запускать каждую минуту
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels: {{ include "backend.labels" . | nindent 8 }}
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: {{ .Chart.Name }}-cron
+              {{ with .Values.images.cron }}
+              image: {{ printf "%s:%v" .name .tag }}
+              imagePullPolicy: {{ .imagePullPolicy | quote }}
+              {{ end }}
+              env:
+                {{ range $key, $val := .Values.env.configmap }}
+                - name: {{ $key }}
+                  valueFrom:
+                    configMapKeyRef:
+                      - name: {{ $.Chart.Name }}-configmap
+                        key: {{ $val }}
+                {{ end }}
+                {{ range $key, $val := .Values.env.secrets }}
+                - name: {{ $key }}
+                - valueFrom:
+                    secretKeyRef:
+                      name: {{ $.Chart.Name }}-secrets
+                      key: {{ $val }}
+                {{ end }}
