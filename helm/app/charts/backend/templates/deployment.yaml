@@ -23,20 +23,38 @@ spec:
           imagePullPolicy: {{ .imagePullPolicy }}
           {{ end }}
           env:
-            {{ range $key, $val := .Values.env.configmap }}
+            {{- range $key, $val := .Values.env.configmap }}
             - name: {{ $key }}
               valueFrom:
                 configMapKeyRef:
                   name: {{ $.Chart.Name }}-configmap
                   key: {{ $val }}
-            {{ end }}
-            {{ range $key, $val := .Values.env.secrets }}
+            {{- end }}
+            {{- range $key, $val := .Values.env.secrets }}
             - name: {{ $key }}
               valueFrom:
                 secretKeyRef:
                   name: {{ $.Chart.Name }}-secrets
                   key: {{ $val }}
-            {{ end }}
+            {{- end }}
+            {{- range $key, $val := .Values.env.postgresConfigmap }}
+            - name: {{ $key }}
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $.Values.postgres.configmapName }}
+                  key: {{ $val }}
+            {{- end }}
+            {{- range $key, $val := .Values.env.postgresSecrets }}
+            - name: {{ $key }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.postgres.secretName }}
+                  key: {{ $val }}
+            {{- end }}
+            - name: APP_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
           ports:
             - containerPort: {{ .Values.port }}
           readinessProbe:
@@ -63,5 +81,10 @@ spec:
           persistentVolumeClaim:
             claimName: {{ .Chart.Name }}-pvc
       restartPolicy: Always
-  strategy: {{ .Values.strategy }}
+  strategy:
+    type: {{ .Values.strategy.type }}
+    {{- if .Values.strategy.rollingUpdate }}
+    rollingUpdate:
+      {{- toYaml .Values.strategy.rollingUpdate | nindent 6 }}
+    {{- end }}
 ---
