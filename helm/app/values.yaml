@@ -1,0 +1,64 @@
+# Global values that can be accessed by all subcharts
+global:
+  namespace: k8s-hw
+
+# Backend subchart configuration
+backend:
+  enabled: true
+  env:
+    configmap:
+      APP_CONFIG_MAP_ENV_VAR: test-value-from-helm-values
+    secrets:
+      username: "developer"
+      password: "password"
+  port: 8080
+  images:
+    backend:
+      name: fastrapier1/k8s-test-backend-app
+      tag: latest
+      imagePullPolicy: IfNotPresent
+    cron:
+      name: fastrapier1/k8s-test-backend-cron
+      tag: latest
+      imagePullPolicy: IfNotPresent
+    migrations:
+      name: fastrapier1/k8s-test-backend-migrations
+      tag: latest
+  replicaCount: 2
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 1
+    type: RollingUpdate
+
+# Postgres subchart configuration
+postgres:
+  enabled: true
+  secret:
+    username: lamarr
+    password: qwerty12345
+    database: db
+  service:
+    port:
+      name: postgresql
+      node: 30432
+      inner: 5432
+      protocol: TCP
+  statefullset:
+    replicas: 1
+    image:
+      name: postgres
+      tag: 17
+      pullPolicy: IfNotPresent
+    pvc:
+      name: data
+      mountPath: /bitnami/postgresql
+      accessMode: ReadWriteOnce
+      size: 1Gi
+    env:
+      value:
+        PGDATA: /bitnami/postgresql/data
+      secret:
+        POSTGRES_PASSWORD: password
+        POSTGRES_DB: database
+        POSTGRES_USER: username
+      config:

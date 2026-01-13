@@ -1,34 +1,34 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: k8s-test-backend-migrations
-  namespace: k8s-hw
-  labels:
-    app: k8s-test-backend-app
-    component: migrations
+  name: {{ .Chart.Name }}-migrations
+  labels: {{ include "backend.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   backoffLimit: 3
   template:
     metadata:
-      labels:
-        app: k8s-test-backend-app
-        component: migrations
+      labels: {{ include "backend.labels" . | nindent 8 }}
     spec:
       restartPolicy: OnFailure
       containers:
         - name: migrate
-          image: fastrapier1/k8s-test-backend-migrations:latest
-          imagePullPolicy: IfNotPresent
+          {{ with .Values.images.migrations }}
+          image: {{ printf "%s:%s" .name .tag }}
+          {{- end }}
           env:
             - name: APP_POSTGRES_HOST
               valueFrom:
                 configMapKeyRef:
-                  name: db-configmap
+                  name: postgres-configmap
                   key: host
             - name: APP_POSTGRES_PORT
               valueFrom:
                 configMapKeyRef:
-                  name: db-configmap
+                  name: postgres-configmap
                   key: port
             - name: APP_POSTGRES_DB
               valueFrom:

@@ -11,5 +11,5 @@ spec:
     - name: wget
       image: busybox
       command: ['wget']
-      args: ['{{ include "postgres.fullname" . }}:{{ .Values.service.port }}']
+      args: ['{{ include "postgres.fullname" . }}-svc:{{ .Values.service.port.inner }}']
   restartPolicy: Never

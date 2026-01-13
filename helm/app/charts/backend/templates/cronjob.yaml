@@ -13,7 +13,7 @@ spec:
       backoffLimit: 2
       template:
         metadata:
-          labels: {{ include "backend.labels" . | nindent 8 }}
+          labels: {{ include "backend.labels" . | nindent 12 }}
         spec:
           restartPolicy: OnFailure
           containers:
@@ -23,17 +23,28 @@ spec:
               imagePullPolicy: {{ .imagePullPolicy | quote }}
               {{ end }}
               env:
-                {{ range $key, $val := .Values.env.configmap }}
-                - name: {{ $key }}
+                - name: APP_POSTGRES_HOST
                   valueFrom:
                     configMapKeyRef:
-                      - name: {{ $.Chart.Name }}-configmap
-                        key: {{ $val }}
-                {{ end }}
-                {{ range $key, $val := .Values.env.secrets }}
-                - name: {{ $key }}
-                - valueFrom:
+                      name: postgres-configmap
+                      key: host
+                - name: APP_POSTGRES_PORT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: postgres-configmap
+                      key: port
+                - name: APP_POSTGRES_DB
+                  valueFrom:
                     secretKeyRef:
-                      name: {{ $.Chart.Name }}-secrets
-                      key: {{ $val }}
-                {{ end }}
+                      name: postgres-secrets
+                      key: database
+                - name: APP_POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-secrets
+                      key: username
+                - name: APP_POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-secrets
+                      key: password
