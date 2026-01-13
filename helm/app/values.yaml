@@ -43,7 +43,7 @@ postgres:
       node: 30432
       inner: 5432
       protocol: TCP
-  statefullset:
+  statefulset:
     replicas: 1
     image:
       name: postgres
