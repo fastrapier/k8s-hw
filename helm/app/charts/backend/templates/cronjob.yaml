@@ -4,7 +4,7 @@ metadata:
   name: {{ .Chart.Name }}-cronjob
   labels: {{ include "backend.labels" . | nindent 4 }}
 spec:
-  schedule: "*/1 * * * *" # запускать каждую минуту
+  schedule: "*/1 * * * *" # run every minute
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   concurrencyPolicy: Forbid
