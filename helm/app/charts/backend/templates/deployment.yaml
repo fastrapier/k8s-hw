@@ -63,5 +63,15 @@ spec:
           persistentVolumeClaim:
             claimName: {{ .Chart.Name }}-pvc
       restartPolicy: Always
-  strategy: {{ .Values.strategy }}
+  strategy:
+    type: {{ .Values.strategy.type }}
+    {{- if eq .Values.strategy.type "RollingUpdate" }}
+    rollingUpdate:
+      {{- with .Values.strategy.rollingUpdate }}
+      maxUnavailable: {{ .maxUnavailable }}
+      {{- if .maxSurge }}
+      maxSurge: {{ .maxSurge }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
 ---
