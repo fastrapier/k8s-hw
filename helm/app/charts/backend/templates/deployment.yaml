@@ -28,7 +28,7 @@ spec:
               valueFrom:
                 configMapKeyRef:
                   name: {{ $.Chart.Name }}-configmap
-                  key: {{ $val }}
+                  key: {{ $key }}
             {{ end }}
             {{ range $key, $val := .Values.env.secrets }}
             - name: {{ $key }}
