@@ -1,0 +1,77 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Chart.Name }}-deployment
+  labels:
+    {{ include "backend.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{ include "backend.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      name: {{ .Chart.Name }}-pod
+      labels:
+        {{ include "backend.labels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}-container
+          {{ with .Values.images.backend }}
+          image: {{ printf "%s:%s" .name .tag }}
+          imagePullPolicy: {{ .imagePullPolicy }}
+          {{ end }}
+          env:
+            {{ range $key, $val := .Values.env.configmap }}
+            - name: {{ $key }}
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $.Chart.Name }}-configmap
+                  key: {{ $key }}
+            {{ end }}
+            {{ range $key, $val := .Values.env.secrets }}
+            - name: {{ $key }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Chart.Name }}-secrets
+                  key: {{ $key }}
+            {{ end }}
+          ports:
+            - containerPort: {{ .Values.port }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: {{ .Values.port }}
+            initialDelaySeconds: 1
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: {{ .Chart.Name }}-data
+              mountPath: /var/lib/{{ .Chart.Name }}/data
+      volumes:
+        - name: {{ .Chart.Name }}-data
+          persistentVolumeClaim:
+            claimName: {{ .Chart.Name }}-pvc
+      restartPolicy: Always
+  strategy:
+    type: {{ .Values.strategy.type }}
+    {{- if eq .Values.strategy.type "RollingUpdate" }}
+    rollingUpdate:
+      {{- with .Values.strategy.rollingUpdate }}
+      maxUnavailable: {{ .maxUnavailable }}
+      {{- if .maxSurge }}
+      maxSurge: {{ .maxSurge }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+---

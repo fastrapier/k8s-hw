@@ -40,7 +40,7 @@ P_OK=$(GREEN)[OK]
 P_ERR=$(RED)[ERR]
 P_BUILD=$(MAGENTA)[BUILD]
 
-.PHONY: all swagger build run clean docker docker-push docker-migrations docker-migrations-push docker-cron docker-cron-push ingress test dashboard-token deploy undeploy migrations-job
+.PHONY: all swagger build run clean docker docker-push docker-migrations docker-migrations-push docker-cron docker-cron-push ingress test dashboard-install dashboard-proxy dashboard-url dashboard-token deploy undeploy migrations-job
 
 all: build
 
@@ -217,6 +217,27 @@ undeploy-full: undeploy
 	@printf '%b\n' "$(P_STEP) Дополнительная очистка: удаление ingress-nginx namespace$(RESET)"
 	- @$(KCTL) delete namespace ingress-nginx --ignore-not-found
 	@printf '%b\n' "$(P_OK) Полная очистка завершена (включая ingress-nginx)$(RESET)"
+
+dashboard-install:
+	@printf '%b\n' "$(P_INFO) Установка Kubernetes Dashboard$(RESET)"
+	@if $(KCTL) get namespace kubernetes-dashboard >/dev/null 2>&1; then \
+		printf '%b\n' "$(P_INFO) Dashboard уже установлен$(RESET)"; \
+	else \
+		printf '%b\n' "$(P_STEP) Установка Dashboard$(RESET)"; \
+		$(KCTL) apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml; \
+		printf '%b\n' "$(P_OK) Dashboard установлен$(RESET)"; \
+	fi
+
+dashboard-proxy:
+	@printf '%b\n' "$(P_INFO) Запуск kubectl proxy для доступа к Dashboard$(RESET)"
+	@printf '%b\n' "$(P_STEP) После запуска используйте: make dashboard-url$(RESET)"
+	@printf '%b\n' "$(P_STEP) Для получения токена используйте: make dashboard-token$(RESET)"
+	@$(KCTL) proxy
+
+dashboard-url:
+	@printf '%b\n' "$(P_INFO) URL для доступа к Dashboard:$(RESET)"
+	@printf '%b\n' "$(P_OK) http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/$(RESET)"
+	@printf '%b\n' "$(P_STEP) Получите токен командой: make dashboard-token$(RESET)"
 
 dashboard-token:
 	@printf '%b\n' "$(P_INFO) dashboard-token context=$(K8S_CONTEXT)$(RESET)"
