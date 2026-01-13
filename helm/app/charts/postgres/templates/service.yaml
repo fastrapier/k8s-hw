@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Chart.Name }}-headless-svc
+  labels: {{ include "postgres.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector: {{ include "postgres.selectorLabels" . | nindent 4 }}
+  {{ with .Values.service.port }}
+  ports:
+    - name: {{ .name }}
+      port: {{ .inner }}
+      targetPort: {{ .name }}
+      protocol: {{ .protocol }}
+  {{ end }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Chart.Name }}-svc
+  labels: {{ include "postgres.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {{ include "postgres.selectorLabels" . | nindent 4 }}
+  {{ with .Values.service.port }}
+  ports:
+    - name: {{ .name }}
+      port: {{ .inner }}
+      targetPort: {{ .name }}
+      protocol: {{ .protocol }}
+  {{ end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Chart.Name }}-nodeport-svc
+  labels: {{ include "postgres.labels" . | nindent 4 }}
+spec:
+  type: NodePort
+  selector: {{ include "postgres.selectorLabels" . | nindent 4 }}
+  {{ with .Values.service.port }}
+  ports:
+    - name: {{ .name }}
+      port: {{ .inner }}
+      targetPort: {{ .name }}
+      protocol: {{ .protocol }}
+      nodePort: {{ .node }}
+  {{ end }}

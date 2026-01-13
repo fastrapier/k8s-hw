@@ -1,0 +1,34 @@
+secret:
+  username: ref+vault://secret/postgres#/username
+  password: ref+vault://secret/postgres#/password
+  database: ref+vault://secret/postgres#/database
+service:
+  port:
+    name: postgresql
+    node: 30432
+    inner: 5432
+    protocol: TCP
+statefullset:
+  replicas: 1
+  image:
+    name: postgres
+    tag: 17
+    pullPolicy: IfNotPresent
+  pvc:
+    name: data
+    mountPath: /bitnami/postgresql
+    accessMode: ReadWriteOnce
+    size: 1Gi
+  env:
+    value:
+      PGDATA: /bitnami/postgresql/data
+    secret:
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: database
+      POSTGRES_USER: username
+    config:
+migrate-job:
+  image:
+    name: fastrapier1/k8s-test-backend-migrations
+    tag: latest
+    pullPolicy: IfNotPresent

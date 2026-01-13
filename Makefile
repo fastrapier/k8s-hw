@@ -20,6 +20,11 @@ SWAGGER_JSON = docs/swagger.json
 SWAGGER_BIN = $(shell go env GOPATH)/bin/swagger
 LDFLAGS = -X k8s-hw/internal/handler.Version=$(VERSION)
 K8S_NAMESPACE = k8s-hw
+# Vault settings
+VAULT_NAMESPACE ?= $(K8S_NAMESPACE)
+VAULT_RELEASE_NAME ?= vault
+VAULT_HOST ?= vault.local
+VAULT_ADDR ?= http://$(VAULT_HOST)
 # kubectl с заданным контекстом
 KCTL = kubectl --context $(K8S_CONTEXT)
 # kubectl с контекстом и namespace
@@ -40,7 +45,7 @@ P_OK=$(GREEN)[OK]
 P_ERR=$(RED)[ERR]
 P_BUILD=$(MAGENTA)[BUILD]
 
-.PHONY: all swagger build run clean docker docker-push docker-migrations docker-migrations-push docker-cron docker-cron-push ingress test dashboard-token deploy undeploy migrations-job
+.PHONY: all swagger build run clean docker docker-push docker-migrations docker-migrations-push docker-cron docker-cron-push ingress test dashboard-install dashboard-proxy dashboard-url dashboard-token deploy undeploy migrations-job
 
 all: build
 
@@ -218,7 +223,144 @@ undeploy-full: undeploy
 	- @$(KCTL) delete namespace ingress-nginx --ignore-not-found
 	@printf '%b\n' "$(P_OK) Полная очистка завершена (включая ingress-nginx)$(RESET)"
 
+dashboard-install:
+	@printf '%b\n' "$(P_INFO) Установка Kubernetes Dashboard$(RESET)"
+	@if $(KCTL) get namespace kubernetes-dashboard >/dev/null 2>&1; then \
+		printf '%b\n' "$(P_INFO) Dashboard уже установлен$(RESET)"; \
+	else \
+		printf '%b\n' "$(P_STEP) Установка Dashboard$(RESET)"; \
+		$(KCTL) apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml; \
+		printf '%b\n' "$(P_OK) Dashboard установлен$(RESET)"; \
+	fi
+
+dashboard-proxy:
+	@printf '%b\n' "$(P_INFO) Запуск kubectl proxy для доступа к Dashboard$(RESET)"
+	@printf '%b\n' "$(P_STEP) После запуска используйте: make dashboard-url$(RESET)"
+	@printf '%b\n' "$(P_STEP) Для получения токена используйте: make dashboard-token$(RESET)"
+	@$(KCTL) proxy
+
+dashboard-url:
+	@printf '%b\n' "$(P_INFO) URL для доступа к Dashboard:$(RESET)"
+	@printf '%b\n' "$(P_OK) http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/$(RESET)"
+	@printf '%b\n' "$(P_STEP) Получите токен командой: make dashboard-token$(RESET)"
+
 dashboard-token:
 	@printf '%b\n' "$(P_INFO) dashboard-token context=$(K8S_CONTEXT)$(RESET)"
 	@chmod +x scripts/gen-dashboard-token.sh
 	@K8S_CONTEXT=$(K8S_CONTEXT) ./scripts/gen-dashboard-token.sh
+
+# ============== VAULT ==============
+
+.PHONY: vault-install vault-init vault-setup-secrets vault-setup-approle vault-status vault-uninstall helm-secrets-install helm-deploy-secrets
+
+# Установка Vault через Helm с dev-режимом
+vault-install:
+	@printf '%b\n' "$(P_INFO) Установка Vault в namespace=$(VAULT_NAMESPACE)$(RESET)"
+	@if ! helm repo list | grep -q "^hashicorp"; then \
+		printf '%b\n' "$(P_STEP) Добавление репозитория hashicorp$(RESET)"; \
+		helm repo add hashicorp https://helm.releases.hashicorp.com; \
+	fi
+	@helm repo update
+	@if helm list -n $(VAULT_NAMESPACE) | grep -q "$(VAULT_RELEASE_NAME)"; then \
+		printf '%b\n' "$(P_INFO) Vault уже установлен$(RESET)"; \
+	else \
+		printf '%b\n' "$(P_STEP) Установка Vault$(RESET)"; \
+		helm install $(VAULT_RELEASE_NAME) hashicorp/vault \
+			--namespace $(VAULT_NAMESPACE) \
+			--set "server.dev.enabled=true" \
+			--set "server.dev.devRootToken=root" \
+			--set "ui.enabled=true" \
+			--set "ui.serviceType=ClusterIP" \
+			--set "injector.enabled=false" \
+			--set "server.ingress.enabled=true" \
+			--set "server.ingress.ingressClassName=nginx" \
+			--set "server.ingress.hosts[0].host=$(VAULT_HOST)" \
+			--set "server.ingress.hosts[0].paths[0]=/" \
+			--wait --timeout=5m; \
+		printf '%b\n' "$(P_OK) Vault установлен$(RESET)"; \
+	fi
+	@printf '%b\n' "$(P_STEP) Добавление $(VAULT_HOST) в /etc/hosts (sudo)$(RESET)"
+	@LINE_HOST="$(VAULT_HOST)"; if grep -q "$$LINE_HOST" /etc/hosts; then \
+		printf '%b\n' "$(P_INFO) /etc/hosts уже содержит $$LINE_HOST$(RESET)"; \
+	else \
+		echo "127.0.0.1 $$LINE_HOST" | sudo tee -a /etc/hosts >/dev/null; \
+	fi
+	@printf '%b\n' "$(P_OK) Vault UI доступен: $(VAULT_ADDR)$(RESET)"
+	@printf '%b\n' "$(P_INFO) Dev Root Token: root$(RESET)"
+
+# Инициализация Vault (в dev-режиме не требуется, уже unsealed)
+vault-init:
+	@printf '%b\n' "$(P_INFO) Проверка статуса Vault$(RESET)"
+	@$(KCTL_NS) exec -it $(VAULT_RELEASE_NAME)-0 -- vault status || true
+	@printf '%b\n' "$(P_OK) Vault в dev-режиме автоматически unsealed$(RESET)"
+
+# Настройка секретов в Vault
+vault-setup-secrets:
+	@printf '%b\n' "$(P_INFO) Настройка секретов в Vault$(RESET)"
+	@printf '%b\n' "$(P_STEP) Создание секретов для PostgreSQL$(RESET)"
+	@$(KCTL_NS) exec $(VAULT_RELEASE_NAME)-0 -- vault kv put secret/postgres \
+		username=lamarr \
+		password=qwerty12345 \
+		database=db
+	@printf '%b\n' "$(P_STEP) Создание секретов для Backend$(RESET)"
+	@$(KCTL_NS) exec $(VAULT_RELEASE_NAME)-0 -- vault kv put secret/backend \
+		username=developer \
+		password=password
+	@printf '%b\n' "$(P_OK) Секреты созданы в Vault$(RESET)"
+
+# Настройка AppRole аутентификации
+vault-setup-approle:
+	@printf '%b\n' "$(P_INFO) Настройка AppRole аутентификации$(RESET)"
+	@printf '%b\n' "$(P_STEP) Создание политики app-policy$(RESET)"
+	@echo 'path "secret/data/*" { capabilities = ["read", "list"] }' | $(KCTL_NS) exec -i $(VAULT_RELEASE_NAME)-0 -- vault policy write app-policy -
+	@printf '%b\n' "$(P_STEP) Включение AppRole auth method$(RESET)"
+	@$(KCTL_NS) exec $(VAULT_RELEASE_NAME)-0 -- vault auth enable approle 2>/dev/null || printf '%b\n' "$(P_INFO) AppRole уже включен$(RESET)"
+	@printf '%b\n' "$(P_STEP) Создание роли app-role$(RESET)"
+	@$(KCTL_NS) exec $(VAULT_RELEASE_NAME)-0 -- vault write auth/approle/role/app-role \
+		token_policies="app-policy" \
+		token_ttl=1h \
+		token_max_ttl=4h
+	@printf '%b\n' "$(P_OK) AppRole настроен$(RESET)"
+	@printf '%b\n' "$(P_INFO) Получение Role ID и Secret ID:$(RESET)"
+	@printf '%b\n' "$(GREEN)VAULT_ROLE_ID=$$($(KCTL_NS) exec $(VAULT_RELEASE_NAME)-0 -- vault read -field=role_id auth/approle/role/app-role/role-id)$(RESET)"
+	@printf '%b\n' "$(GREEN)VAULT_SECRET_ID=$$($(KCTL_NS) exec $(VAULT_RELEASE_NAME)-0 -- vault write -field=secret_id -f auth/approle/role/app-role/secret-id)$(RESET)"
+	@printf '%b\n' "$(P_STEP) Сохраните эти значения в .env файл$(RESET)"
+
+# Проверка статуса Vault
+vault-status:
+	@printf '%b\n' "$(P_INFO) Статус Vault$(RESET)"
+	@$(KCTL_NS) exec $(VAULT_RELEASE_NAME)-0 -- vault status
+
+# Удаление Vault
+vault-uninstall:
+	@printf '%b\n' "$(P_INFO) Удаление Vault$(RESET)"
+	@helm uninstall $(VAULT_RELEASE_NAME) -n $(VAULT_NAMESPACE) || true
+	@printf '%b\n' "$(P_STEP) Удаление записи $(VAULT_HOST) из /etc/hosts$(RESET)"
+	@LINE_HOST="$(VAULT_HOST)"; \
+	if grep -q "$$LINE_HOST" /etc/hosts; then \
+		sudo awk -v h="$$LINE_HOST" '($$1=="127.0.0.1"){ rm=0; for(i=2;i<=NF;i++){ if($$i==h){rm=1; break} } if(rm){next} } {print}' /etc/hosts > /tmp/hosts.new.vault && sudo mv /tmp/hosts.new.vault /etc/hosts; \
+		printf '%b\n' "$(P_OK) Запись удалена$(RESET)"; \
+	fi
+	@printf '%b\n' "$(P_OK) Vault удалён$(RESET)"
+
+# Установка helm-secrets plugin
+helm-secrets-install:
+	@printf '%b\n' "$(P_INFO) Установка helm-secrets plugin$(RESET)"
+	@if helm plugin list | grep -q "secrets"; then \
+		printf '%b\n' "$(P_INFO) helm-secrets уже установлен$(RESET)"; \
+	else \
+		helm plugin install https://github.com/jkroepke/helm-secrets --version v4.6.0; \
+		printf '%b\n' "$(P_OK) helm-secrets установлен$(RESET)"; \
+	fi
+
+# Деплой приложения с использованием секретов из Vault
+helm-deploy-secrets:
+	@printf '%b\n' "$(P_INFO) Деплой приложения с helm-secrets$(RESET)"
+	@if [ ! -f .env ]; then \
+		printf '%b\n' "$(P_ERR) Файл .env не найден! Создайте его на основе .env.example$(RESET)"; \
+		exit 1; \
+	fi
+	@chmod +x scripts/deploy-with-secrets.sh
+	@./scripts/deploy-with-secrets.sh
+	@printf '%b\n' "$(P_OK) Деплой завершён$(RESET)"
+

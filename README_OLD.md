@@ -92,6 +92,37 @@
 - Таблицы: `requests`, `cron_runs` (вторая наполняется CronJob'ом).
 - Порядок при deploy: Postgres StatefulSet -> миграции -> приложение -> CronJob.
 
+### Helm-чарт PostgreSQL
+В каталоге `helm/postgres/` находится Helm-чарт для развёртывания PostgreSQL StatefulSet.
+
+**Структура:**
+- `Chart.yaml` — метаданные чарта
+- `values.yaml` — конфигурация (пароли, реплики, размер storage и т.д.)
+- `templates/` — шаблоны Kubernetes манифестов
+
+**Проверка чарта:**
+```bash
+helm lint helm/postgres/
+helm template test-postgres helm/postgres/ --dry-run
+```
+
+**Установка через Helm (опционально):**
+```bash
+helm install postgres helm/postgres/ -n k8s-hw --create-namespace
+```
+
+**Обновление:**
+```bash
+helm upgrade postgres helm/postgres/ -n k8s-hw
+```
+
+**Удаление:**
+```bash
+helm uninstall postgres -n k8s-hw
+```
+
+**Примечание:** В текущей реализации `make deploy` использует прямые манифесты k8s/db/, а не Helm-чарт. Helm-чарт предоставлен как альтернативный способ развёртывания БД.
+
 ## CronJob
 `k8s/app/cronjob.yaml` выполняется каждую минуту (`*/1 * * * *`):
 - Стартует контейнер из образа `fastrapier1/k8s-test-backend-cron:<VERSION>`
@@ -219,10 +250,37 @@ make undeploy-full  # дополнительно удаляет namespace ingres
 make clean          # локальные бинарь + swagger.json
 ```
 
-## Dashboard токен (опционально)
+## Kubernetes Dashboard
+Для мониторинга и управления кластером через веб-интерфейс:
+
+### Установка Dashboard
+```bash
+make dashboard-install
+```
+
+### Доступ к Dashboard
+1. Запустите прокси (в отдельном терминале):
+```bash
+make dashboard-proxy
+```
+
+2. Получите URL для доступа:
+```bash
+make dashboard-url
+```
+Или откройте в браузере:
+```
+http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/
+```
+
+3. Получите токен для входа:
 ```bash
 make dashboard-token
 ```
+
+4. Скопируйте токен и вставьте на странице входа в Dashboard
+
+**Важно:** Не пытайтесь зайти просто на `http://127.0.0.1:8001` — это не сработает. Используйте полный URL из шага 2.
 
 ## Замечания / улучшения (IDEAS)
 - Добавить оператор Postgres вместо ручного StatefulSet

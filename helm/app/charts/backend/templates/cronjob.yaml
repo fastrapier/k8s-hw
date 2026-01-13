@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Chart.Name }}-cronjob
+  labels: {{ include "backend.labels" . | nindent 4 }}
+spec:
+  schedule: "*/1 * * * *" # запускать каждую минуту
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels: {{ include "backend.labels" . | nindent 12 }}
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: {{ .Chart.Name }}-cron
+              {{ with .Values.images.cron }}
+              image: {{ printf "%s:%v" .name .tag }}
+              imagePullPolicy: {{ .imagePullPolicy | quote }}
+              {{ end }}
+              env:
+                - name: APP_POSTGRES_HOST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: postgres-configmap
+                      key: host
+                - name: APP_POSTGRES_PORT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: postgres-configmap
+                      key: port
+                - name: APP_POSTGRES_DB
+                  value: {{ .Values.global.postgres.secret.database | quote }}
+                - name: APP_POSTGRES_USER
+                  value: {{ .Values.global.postgres.secret.username | quote }}
+                - name: APP_POSTGRES_PASSWORD
+                  value: {{ .Values.global.postgres.secret.password | quote }}
