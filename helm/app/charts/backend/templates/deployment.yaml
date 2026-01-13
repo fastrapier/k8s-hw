@@ -35,7 +35,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ $.Chart.Name }}-secrets
-                  key: {{ $val }}
+                  key: {{ $key }}
             {{ end }}
           ports:
             - containerPort: {{ .Values.port }}
