@@ -28,14 +28,11 @@ spec:
               valueFrom:
                 configMapKeyRef:
                   name: {{ $.Chart.Name }}-configmap
-                  key: {{ $val }}
+                  key: {{ $key }}
             {{ end }}
             {{ range $key, $val := .Values.env.secrets }}
             - name: {{ $key }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $.Chart.Name }}-secrets
-                  key: {{ $val }}
+              value: {{ $val | quote }}
             {{ end }}
           ports:
             - containerPort: {{ .Values.port }}

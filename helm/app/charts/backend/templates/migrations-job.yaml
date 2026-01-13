@@ -31,17 +31,8 @@ spec:
                   name: postgres-configmap
                   key: port
             - name: APP_POSTGRES_DB
-              valueFrom:
-                secretKeyRef:
-                  name: postgres-secrets
-                  key: database
+              value: {{ .Values.global.postgres.secret.database | quote }}
             - name: APP_POSTGRES_USER
-              valueFrom:
-                secretKeyRef:
-                  name: postgres-secrets
-                  key: username
+              value: {{ .Values.global.postgres.secret.username | quote }}
             - name: APP_POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: postgres-secrets
-                  key: password
+              value: {{ .Values.global.postgres.secret.password | quote }}

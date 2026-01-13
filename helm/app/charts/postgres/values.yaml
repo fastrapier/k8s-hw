@@ -1,7 +1,7 @@
 secret:
-  username: lamarr
-  password: qwerty12345
-  database: db
+  username: ref+vault://secret/postgres#/username
+  password: ref+vault://secret/postgres#/password
+  database: ref+vault://secret/postgres#/database
 service:
   port:
     name: postgresql

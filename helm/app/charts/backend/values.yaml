@@ -2,8 +2,8 @@ env:
   configmap:
     APP_CONFIG_MAP_ENV_VAR: test-value-from-helm-values
   secrets:
-    username: "developer"
-    password: "password"
+    username: ref+vault://secret/backend#/username
+    password: ref+vault://secret/backend#/password
 
 
 port: 8080

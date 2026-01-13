@@ -25,10 +25,7 @@ spec:
             {{- end }}
             {{- range $key, $val := .Values.statefullset.env.secret }}
             - name: {{ $key }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $.Chart.Name }}-secrets
-                  key: {{ $val }}
+              value: {{ index $.Values.secret $val | quote }}
             {{- end }}
             {{- range $key, $val := .Values.statefullset.env.config }}
             - name: {{ $key }}

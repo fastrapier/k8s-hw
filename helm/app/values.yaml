@@ -1,6 +1,11 @@
 # Global values that can be accessed by all subcharts
 global:
   namespace: k8s-hw
+  postgres:
+    secret:
+      username: ref+vault://secret/postgres#/username
+      password: ref+vault://secret/postgres#/password
+      database: ref+vault://secret/postgres#/database
 
 # Backend subchart configuration
 backend:
@@ -9,8 +14,8 @@ backend:
     configmap:
       APP_CONFIG_MAP_ENV_VAR: test-value-from-helm-values
     secrets:
-      username: "developer"
-      password: "password"
+      username: ref+vault://secret/backend#/username
+      password: ref+vault://secret/backend#/password
   port: 8080
   images:
     backend:
@@ -34,9 +39,9 @@ backend:
 postgres:
   enabled: true
   secret:
-    username: lamarr
-    password: qwerty12345
-    database: db
+    username: ref+vault://secret/postgres#/username
+    password: ref+vault://secret/postgres#/password
+    database: ref+vault://secret/postgres#/database
   service:
     port:
       name: postgresql

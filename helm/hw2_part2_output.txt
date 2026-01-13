@@ -1,0 +1,33 @@
+NAME                                      READY   STATUS      RESTARTS   AGE
+pod/backend-cronjob-29471838-b5dr4        0/1     Completed   0          33s
+pod/backend-deployment-8658f5f56d-fmn85   1/1     Running     0          83s
+pod/backend-deployment-8658f5f56d-fw9jv   1/1     Running     0          82s
+pod/backend-migrations-v7tx8              0/1     Completed   0          80s
+pod/postgres-sts-0                        1/1     Running     0          82s
+pod/vault-0                               1/1     Running     0          23m
+
+NAME                            TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)             AGE
+service/backend-service         ClusterIP   10.102.216.128   <none>        80/TCP              83s
+service/postgres-headless-svc   ClusterIP   None             <none>        5432/TCP            83s
+service/postgres-nodeport-svc   NodePort    10.109.52.47     <none>        5432:30432/TCP      83s
+service/postgres-svc            ClusterIP   10.98.12.41      <none>        5432/TCP            83s
+service/vault                   ClusterIP   10.100.132.93    <none>        8200/TCP,8201/TCP   23m
+service/vault-internal          ClusterIP   None             <none>        8200/TCP,8201/TCP   23m
+service/vault-ui                ClusterIP   10.99.6.243      <none>        8200/TCP            23m
+
+NAME                                 READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/backend-deployment   2/2     2            2           83s
+
+NAME                                            DESIRED   CURRENT   READY   AGE
+replicaset.apps/backend-deployment-8658f5f56d   2         2         2       83s
+
+NAME                            READY   AGE
+statefulset.apps/postgres-sts   1/1     83s
+statefulset.apps/vault          1/1     23m
+
+NAME                            SCHEDULE      TIMEZONE   SUSPEND   ACTIVE   LAST SCHEDULE   AGE
+cronjob.batch/backend-cronjob   */1 * * * *   <none>     False     0        33s             82s
+
+NAME                                 STATUS     COMPLETIONS   DURATION   AGE
+job.batch/backend-cronjob-29471838   Complete   1/1           3s         33s
+job.batch/backend-migrations         Complete   1/1           7s         80s
