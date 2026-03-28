@@ -1,0 +1,10 @@
+worker:
+  replicas: 1
+
+api:
+  replicas: 1
+  host: "celery-api.local"
+
+flower:
+  replicas: 1
+  host: "flower.local"

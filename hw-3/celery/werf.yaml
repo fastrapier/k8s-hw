@@ -1,0 +1,8 @@
+project: hw3-celery
+configVersion: 1
+---
+image: worker
+dockerfile: docker/worker.Dockerfile
+---
+image: api
+dockerfile: docker/api.Dockerfile

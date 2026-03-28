@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-api
+  labels:
+    app: celery-api
+spec:
+  replicas: {{ .Values.api.replicas }}
+  selector:
+    matchLabels:
+      app: celery-api
+  template:
+    metadata:
+      labels:
+        app: celery-api
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: api
+          image: {{ .Values.werf.image.api }}
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: celery-config
+            - secretRef:
+                name: vault-approle
+            - secretRef:
+                name: celery-broker

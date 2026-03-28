@@ -1,0 +1,4 @@
+apiVersion: v2
+name: hw3
+version: 1.0.0
+description: Producer/Consumer with RabbitMQ and Vault
