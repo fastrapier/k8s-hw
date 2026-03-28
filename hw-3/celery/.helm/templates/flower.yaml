@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flower
+  labels:
+    app: flower
+spec:
+  replicas: {{ .Values.flower.replicas }}
+  selector:
+    matchLabels:
+      app: flower
+  template:
+    metadata:
+      labels:
+        app: flower
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: flower
+          image: mher/flower:2.0
+          ports:
+            - containerPort: 5555
+          envFrom:
+            - secretRef:
+                name: celery-broker
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flower
+spec:
+  selector:
+    app: flower
+  ports:
+    - port: 5555
+      targetPort: 5555
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: flower
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: {{ .Values.flower.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: flower
+                port:
+                  number: 5555

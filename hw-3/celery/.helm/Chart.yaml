@@ -1,0 +1,4 @@
+apiVersion: v2
+name: hw3-celery
+version: 1.0.0
+description: Celery Worker + Flower + FastAPI for HW3

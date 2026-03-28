@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: celery-config
+data:
+  VAULT_ADDR: "http://vault.{{ .Release.Namespace }}.svc.cluster.local:8200"
+  RMQ_HOST: "rabbitmq.{{ .Release.Namespace }}.svc.cluster.local"
