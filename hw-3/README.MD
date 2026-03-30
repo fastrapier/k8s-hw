@@ -112,7 +112,7 @@ hw-3/
         └── templates/
             ├── configmap.yaml
             ├── celery-worker.yaml # Deployment для Celery worker
-            ├── flower.yaml        # Deployment + Service для Flower
+            ├── flower.yaml        # Deployment + Service + Ingress для Flower
             ├── api-deployment.yaml
             ├── api-service.yaml
             └── api-ingress.yaml   # Ingress: celery-api.local
@@ -237,8 +237,9 @@ cd hw-3
 - `GET /tasks/{task_id}` — статус задачи (AsyncResult)
 - `GET /health` — проверка работоспособности
 
-### Flower (Deployment)
+### Flower (Deployment + Ingress)
 - Веб-интерфейс мониторинга Celery
+- Доступен через Ingress: `flower.local`
 - Показывает: активные воркеры, задачи, статистику
 
 ---

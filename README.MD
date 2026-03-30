@@ -13,6 +13,7 @@ https://t.me/imperial_dan
 |---|---|---|---|
 | 1-2 | Helm + Vault | [hw1-2/](hw1-2/) | Helm-чарт приложения, интеграция с HashiCorp Vault (AppRole, helm-secrets) |
 | 3 | RabbitMQ + Celery | [hw-3/](hw-3/) | Брокер сообщений, Go Producer/Consumer, Python Celery/Flower/FastAPI |
+| 4 | Redis + кэширование | [hw-4/](hw-4/) | Redis, RedisInsight, CacheManager с TTL, кэширование API-запросов |
 
 ---
 
@@ -39,3 +40,17 @@ https://t.me/imperial_dan
 - Идемпотентные скрипты: `init.sh` для развёртывания, `teardown.sh` для очистки
 
 Подробнее: [hw-3/README.MD](hw-3/README.MD) | Чеклист для защиты: [hw-3/CHECKLIST.MD](hw-3/CHECKLIST.MD)
+
+---
+
+### ДЗ 4: Redis и кэширование
+
+Развертывание Redis и RedisInsight, реализация CacheManager с TTL:
+
+- **Redis** — StatefulSet на базе redis-stack-server, Headless Service + LoadBalancer, пароль из Vault
+- **RedisInsight** — Helm-чарт heywood8/redisinsight с Ingress
+- **CacheManager** — Go-модуль для работы с Redis (Get/Set/Exists + TTL)
+- **Кэширование API** — CACHE HIT из Redis или API CALL + CACHE SET с TTL (5 мин погода, 10 мин новости)
+- Изолированный namespace `k8s-hw4`
+
+Подробнее: [hw-4/README.MD](hw-4/README.MD) | Чеклист для защиты: [hw-4/CHECKLIST.MD](hw-4/CHECKLIST.MD)

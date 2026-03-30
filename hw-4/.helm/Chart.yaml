@@ -1,0 +1,5 @@
+apiVersion: v2
+name: hw4
+description: HW4 - Go Producer/Consumer with Redis caching
+type: application
+version: 1.0.0

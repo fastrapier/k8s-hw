@@ -1,0 +1,12 @@
+producers:
+  - api: "weather"
+    params: "city=Moscow"
+    schedule: "* * * * *"
+    backoffLimit: 2
+  - api: "news"
+    params: "q=technology"
+    schedule: "* * * * *"
+    backoffLimit: 2
+
+consumer:
+  replicas: 1
