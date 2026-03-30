@@ -1,0 +1,36 @@
+{{- range .Values.producers }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: producer-{{ .api }}
+  labels:
+    app: producer
+    api: {{ .api }}
+spec:
+  schedule: {{ .schedule | default "*/2 * * * *" | quote }}
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 2
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .backoffLimit | default 2 }}
+      template:
+        metadata:
+          labels:
+            app: producer
+            api: {{ .api }}
+        spec:
+          imagePullSecrets:
+            - name: ghcr-pull-secret
+          restartPolicy: Never
+          containers:
+            - name: producer
+              image: {{ $.Values.werf.image.producer }}
+              args: ["--api", {{ .api | quote }}, "--params", {{ .params | quote }}, "--rmq-host", "$(RMQ_HOST)"]
+              envFrom:
+                - configMapRef:
+                    name: app-config
+                - secretRef:
+                    name: vault-approle
+{{- end }}
