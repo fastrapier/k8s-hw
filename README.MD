@@ -66,6 +66,7 @@ https://t.me/imperial_dan
 - **Сборка образа по тегу** — buildx собирает `ghcr.io/fastrapier/hw8:<version>`, версия и git-sha зашиваются в бинарник через `-ldflags`
 - **Деплой по тегу** — `helm upgrade --install` с `--set image.tag=<version>`; тот же чарт используется и локально
 - **Приложение** — минимальный Go HTTP-сервис с `GET /healthz` и `GET /version`
+- **Свой self-hosted раннер** — Actions Runner Controller ставится двумя OCI-чартами GitHub в minikube (`arc-systems` + `arc-runners`); джоба `deploy` уезжает на него и деплоит изнутри кластера, без kubeconfig в секретах
 - На pull request — dry-run версии и сборка образа без push; реальный релиз только при push в `main`
 - Изолированный namespace `k8s-hw8`
 
