@@ -14,6 +14,7 @@ https://t.me/imperial_dan
 | 1-2 | Helm + Vault | [hw1-2/](hw1-2/) | Helm-чарт приложения, интеграция с HashiCorp Vault (AppRole, helm-secrets) |
 | 3 | RabbitMQ + Celery | [hw-3/](hw-3/) | Брокер сообщений, Go Producer/Consumer, Python Celery/Flower/FastAPI |
 | 4 | Redis + кэширование | [hw-4/](hw-4/) | Redis, RedisInsight, CacheManager с TTL, кэширование API-запросов |
+| 11 | Мониторинг | [hw-11/](hw-11/) | helmfile, Prometheus + метрики ингресса, Loki + promtail, Grafana с алертингом на SMTP |
 
 ---
 
@@ -54,3 +55,18 @@ https://t.me/imperial_dan
 - Изолированный namespace `k8s-hw4`
 
 Подробнее: [hw-4/README.MD](hw-4/README.MD) | Чеклист для защиты: [hw-4/CHECKLIST.MD](hw-4/CHECKLIST.MD)
+
+---
+
+### ДЗ 11: Мониторинг
+
+Стек мониторинга в minikube, развёрнутый одной командой через helmfile:
+
+- **helmfile** — пять релизов декларативно в одном файле: репозитории, пинованные версии чартов, values и порядок установки через `needs`
+- **Prometheus** — чарт `kube-prometheus-stack` (Operator + CRD `ServiceMonitor`), Alertmanager, node-exporter, kube-state-metrics
+- **Метрики ингресса** — свой мини-чарт `charts/ingress-metrics`: Service на порт 10254 контроллера в namespace `ingress-nginx` + ServiceMonitor в `k8s-hw11`
+- **Loki + promtail** — логи всех подов кластера, Loki в режиме SingleBinary на filesystem
+- **Grafana** — datasources, дашборды и алертинг целиком через provisioning; contact point на email, SMTP-токен только из Keychain
+- Изолированный namespace `k8s-hw11`, идемпотентные `init.sh` / `teardown.sh`
+
+Подробнее: [hw-11/README.MD](hw-11/README.MD) | Чеклист для защиты: [hw-11/CHECKLIST.MD](hw-11/CHECKLIST.MD)
