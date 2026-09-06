@@ -1,0 +1,25 @@
+# Дефолты сабчарта. Всё, что общее с backend, лежит в global родительского
+# чарта (.helm/values.yaml) и здесь не дублируется.
+replicas: 1
+
+image:
+  repository: postgres
+  tag: "17"
+  pullPolicy: IfNotPresent
+
+nodePort: 30432
+
+persistence:
+  name: data
+  mountPath: /var/lib/postgresql/data
+  subPath: pgdata
+  size: 1Gi
+  accessMode: ReadWriteOnce
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

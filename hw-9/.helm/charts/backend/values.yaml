@@ -1,0 +1,35 @@
+# Дефолты сабчарта. Порт, хост Ingress, pull secret, координаты Postgres и
+# секреты лежат в global родительского чарта (.helm/values.yaml).
+replicaCount: 2
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+
+config:
+  APP_CONFIG_MAP_ENV_VAR: hw-9-value-from-helm-values
+  APP_READINESS_WARMUP_SECONDS: "1"
+  APP_SHUTDOWN_TIMEOUT_SECONDS: "10"
+
+persistence:
+  size: 1Gi
+  accessMode: ReadWriteOnce
+  mountPath: /var/lib/backend/data
+
+cron:
+  enabled: true
+  schedule: "*/1 * * * *"
+  backoffLimit: 2
+
+migrations:
+  enabled: true
+  backoffLimit: 3
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 300m
+    memory: 256Mi
