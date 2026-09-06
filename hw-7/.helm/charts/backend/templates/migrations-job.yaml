@@ -1,0 +1,27 @@
+{{- if .Values.migrations.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: api-migrations
+  labels: {{ include "backend.labels" . | nindent 4 }}
+  annotations:
+    # post-* потому что на первой установке Postgres поднимается тем же релизом;
+    # before-hook-creation — потому что spec Job-а иммутабелен и повторный
+    # converge иначе падал бы на «field is immutable».
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  template:
+    metadata:
+      labels: {{ include "backend.labels" . | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: migrate
+          image: {{ .Values.global.werf.images.migrations.ref }}
+          env: {{- include "backend.postgresEnv" . | nindent 12 }}
+{{- end }}

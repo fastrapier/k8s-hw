@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  labels: {{ include "postgres.labels" . | nindent 4 }}
+data:
+  host: {{ printf "postgres.%s.svc.cluster.local" .Release.Namespace }}
+  port: {{ .Values.global.postgres.port | quote }}

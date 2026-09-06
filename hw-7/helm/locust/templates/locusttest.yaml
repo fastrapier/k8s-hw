@@ -1,0 +1,30 @@
+apiVersion: locust.io/v2
+kind: LocustTest
+metadata:
+  name: {{ .Values.name }}
+  labels: {{ include "locust.labels" . | nindent 4 }}
+spec:
+  image: {{ .Values.image | quote }}
+  imagePullPolicy: {{ .Values.imagePullPolicy }}
+  testFiles:
+    configMapRef: {{ .Values.name }}-locustfile
+  master:
+    # Команда — это args к ENTRYPOINT образа, поэтому НЕ начинается со слова
+    # locust. Флаги --master/--worker/--expect-workers/--autostart/--autoquit
+    # оператор добавляет сам, дублировать их нельзя.
+    command: >-
+      --locustfile {{ include "locust.locustfilePath" . }}
+      --host {{ include "locust.targetHost" . }}
+      --users {{ .Values.load.users }}
+      --spawn-rate {{ .Values.load.spawnRate }}
+      --run-time {{ .Values.load.runTime }}
+    autostart: {{ .Values.master.autostart }}
+    autoquit:
+      enabled: {{ .Values.master.autoquit.enabled }}
+      timeout: {{ .Values.master.autoquit.timeout }}
+    resources: {{ toYaml .Values.master.resources | nindent 6 }}
+  worker:
+    command: >-
+      --locustfile {{ include "locust.locustfilePath" . }}
+    replicas: {{ .Values.worker.replicas }}
+    resources: {{ toYaml .Values.worker.resources | nindent 6 }}

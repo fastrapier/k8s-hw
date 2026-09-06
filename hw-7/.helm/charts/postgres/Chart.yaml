@@ -1,0 +1,6 @@
+apiVersion: v2
+name: postgres
+description: PostgreSQL для HW7 (StatefulSet + Service + Secret)
+type: application
+version: 1.0.0
+appVersion: "17"
