@@ -64,7 +64,13 @@ jobs:
             npx semantic-release
           else
             echo "::notice::Dry-run для ветки $BRANCH: версия только вычисляется"
-            npx semantic-release --dry-run --no-ci --branches "$BRANCH"
+            # env-ci берёт имя ветки из GITHUB_REF, а на pull_request это
+            # refs/pull/N/merge — такая ветка не совпадает ни с одной релизной,
+            # и semantic-release выходит, не посчитав версию. Гасим признаки CI:
+            # тогда ветка определяется по git HEAD, который checkout поставил
+            # на $BRANCH, и --branches "$BRANCH" с ней совпадает.
+            CI= GITHUB_ACTIONS= GITHUB_REF= \
+              npx semantic-release --dry-run --no-ci --branches "$BRANCH"
           fi
 
       - name: Версия релиза

@@ -187,6 +187,24 @@ export GITHUB_TOKEN=$(gh auth token)
 Локально мы почти всегда не на `main`, поэтому без подстановки dry-run падает с
 `ERELEASEBRANCHES`.
 
+### Грабли: dry-run на pull_request
+
+Имя ветки semantic-release берёт не из git, а из переменных CI (пакет `env-ci`).
+На событии `pull_request` `GITHUB_REF` равен `refs/pull/<N>/merge`, такая «ветка» не
+совпадает ни с одной релизной, и semantic-release выходит с сообщением
+`This test run was triggered on the branch refs/pull/7/merge, while semantic-release
+is configured to only publish from ...` — **не посчитав версию**. Внешне прогон
+зелёный, но `version` пустой, и `build` собирает образ с меткой `0.0.0-pr<N>`.
+
+Поэтому в dry-run-ветке workflow признаки CI гасятся:
+
+```bash
+CI= GITHUB_ACTIONS= GITHUB_REF= npx semantic-release --dry-run --no-ci --branches "$BRANCH"
+```
+
+Тогда ветка определяется по git HEAD, а `checkout` заранее поставлен на реальную
+ветку PR (`ref: ${{ github.head_ref }}`), а не на detached merge-коммит.
+
 ## Helm-чарт
 
 Один и тот же чарт `hw-8/helm/app` используется и в CI, и локально — тег передаётся
