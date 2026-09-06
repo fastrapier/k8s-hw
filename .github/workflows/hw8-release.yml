@@ -12,6 +12,15 @@ on:
       - 'hw-8/**'
       - '.github/workflows/hw8-release.yml'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: >-
+          Уже опубликованный тег образа (например 1.0.0). Если задан, release и
+          build пропускаются, а deploy разворачивает этот тег — так пайплайн
+          можно прогнать на self-hosted раннере, не создавая новый релиз.
+        required: false
+        type: string
+        default: ''
 
 concurrency:
   group: hw8-release-${{ github.ref }}
@@ -23,6 +32,8 @@ env:
 jobs:
   release:
     name: Сборка тега (semantic-release)
+    # При ручном запуске с готовым тегом версию считать не нужно.
+    if: inputs.tag == ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -104,6 +115,7 @@ jobs:
   build:
     name: Сборка и push docker-образа
     needs: release
+    if: inputs.tag == ''
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -166,13 +178,45 @@ jobs:
   deploy:
     name: Деплой в Kubernetes по тегу
     needs: [release, build]
-    if: needs.release.outputs.released == 'true'
-    # Часть 2 ДЗ заменит этот раннер на self-hosted внутри кластера.
-    runs-on: ubuntu-latest
+    # При ручном запуске с готовым тегом release и build пропущены, а джоба со
+    # skipped-предшественниками сама уходит в skipped — поэтому нужен
+    # !cancelled(). Результаты предшественников тогда проверяются явно, иначе
+    # деплой поехал бы и после падения build.
+    if: |
+      !cancelled() && (
+        inputs.tag != '' || (
+          needs.release.result == 'success' &&
+          needs.build.result == 'success' &&
+          needs.release.outputs.released == 'true'
+        )
+      )
+    # Раннер выбирает repo variable HW8_RUNNER: её ставит
+    # hw-8/scripts/03-deploy-runner.sh при разворачивании self-hosted раннера.
+    # Fallback обязателен — без него джоба висела бы в очереди до таймаута
+    # GitHub каждый раз, когда minikube с раннером выключен.
+    runs-on: ${{ vars.HW8_RUNNER || 'ubuntu-latest' }}
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v7
+
+      - name: Где выполняется джоба
+        env:
+          RUNS_ON_LABEL: ${{ vars.HW8_RUNNER || 'ubuntu-latest' }}
+          RUNNER_NAME_CTX: ${{ runner.name }}
+        run: |
+          {
+            echo "### Раннер"
+            echo "- \`runs-on\`: \`$RUNS_ON_LABEL\`"
+            echo "- \`runner.name\`: \`$RUNNER_NAME_CTX\`"
+            echo "- \`RUNNER_ENVIRONMENT\`: \`${RUNNER_ENVIRONMENT:-не задан}\`"
+            echo "- hostname: \`$(hostname)\`"
+            if [ -n "${KUBERNETES_SERVICE_HOST:-}" ]; then
+              echo "- внутри кластера: да, API \`$KUBERNETES_SERVICE_HOST\`"
+            else
+              echo "- внутри кластера: нет"
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - uses: azure/setup-helm@v5
         with:
@@ -185,11 +229,20 @@ jobs:
         env:
           KUBECONFIG_B64: ${{ secrets.KUBECONFIG }}
         run: |
+          # Под раннера в кластере: kubectl и helm сами возьмут in-cluster
+          # конфиг из токена ServiceAccount, если kubeconfig'а нет.
+          if [ -n "${KUBERNETES_SERVICE_HOST:-}" ]; then
+            echo "::notice::Раннер работает внутри кластера — используется ServiceAccount hw8-runner-deployer"
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if [ -z "$KUBECONFIG_B64" ]; then
-            echo "::warning::Секрет KUBECONFIG не задан — деплой пропущен. GitHub-hosted раннер не имеет доступа к локальному minikube; это решает часть 2 ДЗ (self-hosted раннер внутри кластера)."
+            echo "::warning::Раннер вне кластера и секрет KUBECONFIG не задан — деплой пропущен. Поднимите self-hosted раннер: hw-8/scripts/03-deploy-runner.sh"
             echo "ready=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
           mkdir -p "$HOME/.kube"
           printf '%s' "$KUBECONFIG_B64" | base64 -d > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
@@ -198,13 +251,22 @@ jobs:
       - name: helm upgrade --install
         if: steps.kube.outputs.ready == 'true'
         env:
-          VERSION: ${{ needs.release.outputs.version }}
+          VERSION: ${{ inputs.tag || needs.release.outputs.version }}
         run: |
+          # Тот же чарт и тот же способ передачи тега, что у scripts/02-deploy.sh.
+          # Секрет для приватного пакета в GHCR кладёт в namespace тот же
+          # скрипт, поэтому здесь он опциональный.
+          PULL_SECRET_ARGS=()
+          if kubectl get secret ghcr-pull-secret -n k8s-hw8 >/dev/null 2>&1; then
+            PULL_SECRET_ARGS=(--set "imagePullSecrets[0].name=ghcr-pull-secret")
+          fi
+
           helm upgrade --install hw8-app hw-8/helm/app \
             --namespace k8s-hw8 \
             --create-namespace \
             --set "image.repository=${IMAGE}" \
             --set "image.tag=${VERSION}" \
+            "${PULL_SECRET_ARGS[@]}" \
             --wait --timeout=5m
 
           kubectl rollout status deployment/hw8-app -n k8s-hw8 --timeout=300s
@@ -212,12 +274,12 @@ jobs:
 
       - name: Итог
         env:
-          VERSION: ${{ needs.release.outputs.version }}
+          VERSION: ${{ inputs.tag || needs.release.outputs.version }}
           READY: ${{ steps.kube.outputs.ready }}
         run: |
           echo "### Деплой" >> "$GITHUB_STEP_SUMMARY"
           if [ "$READY" = "true" ]; then
             echo "Релиз \`hw8-app\` обновлён до \`${IMAGE}:${VERSION}\` в namespace \`k8s-hw8\`" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "Пропущен: нет секрета \`KUBECONFIG\` (нужен доступ к кластеру — см. часть 2 ДЗ)" >> "$GITHUB_STEP_SUMMARY"
+            echo "Пропущен: раннер вне кластера и нет секрета \`KUBECONFIG\`" >> "$GITHUB_STEP_SUMMARY"
           fi
