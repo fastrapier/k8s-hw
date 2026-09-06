@@ -14,6 +14,7 @@ https://t.me/imperial_dan
 | 1-2 | Helm + Vault | [hw1-2/](hw1-2/) | Helm-чарт приложения, интеграция с HashiCorp Vault (AppRole, helm-secrets) |
 | 3 | RabbitMQ + Celery | [hw-3/](hw-3/) | Брокер сообщений, Go Producer/Consumer, Python Celery/Flower/FastAPI |
 | 4 | Redis + кэширование | [hw-4/](hw-4/) | Redis, RedisInsight, CacheManager с TTL, кэширование API-запросов |
+| 9 | Werf | [hw-9/](hw-9/) | Рефакторинг чарта в werf-проект, helm submodules, глобальные values, интеграция с Vault |
 
 ---
 
@@ -54,3 +55,20 @@ https://t.me/imperial_dan
 - Изолированный namespace `k8s-hw4`
 
 Подробнее: [hw-4/README.MD](hw-4/README.MD) | Чеклист для защиты: [hw-4/CHECKLIST.MD](hw-4/CHECKLIST.MD)
+
+---
+
+### ДЗ 9: Werf
+
+Приложение из ДЗ 1-2 (Go HTTP API + PostgreSQL) переехало из «чарт + Makefile + helm-secrets»
+в самодостаточный werf-проект:
+
+- **werf-проект** — `werf.yaml` с тремя образами (app, cron, migrations) и исходниками рядом
+- **Helm submodules** — сабчарты `backend` и `postgres` в `.helm/charts/`, `dependencies` с `condition`
+- **Глобальные values** — порты, имена сервисов, хост Ingress и слоты под секреты в `global`
+- **Интеграция с Vault** — один скрипт: AppRole login → docker-токен → `werf cr login` →
+  секреты через `vals` → `werf converge --values`
+- В репозитории нет ни токена, ни пароля: только `ref+vault://`-ссылки
+- Изолированный namespace `k8s-hw9`, образы `ghcr.io/fastrapier/hw9`
+
+Подробнее: [hw-9/README.MD](hw-9/README.MD) | Чеклист для защиты: [hw-9/CHECKLIST.MD](hw-9/CHECKLIST.MD)
