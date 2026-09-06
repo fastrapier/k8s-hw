@@ -14,6 +14,7 @@ https://t.me/imperial_dan
 | 1-2 | Helm + Vault | [hw1-2/](hw1-2/) | Helm-чарт приложения, интеграция с HashiCorp Vault (AppRole, helm-secrets) |
 | 3 | RabbitMQ + Celery | [hw-3/](hw-3/) | Брокер сообщений, Go Producer/Consumer, Python Celery/Flower/FastAPI |
 | 4 | Redis + кэширование | [hw-4/](hw-4/) | Redis, RedisInsight, CacheManager с TTL, кэширование API-запросов |
+| 8 | CI/CD | [hw-8/](hw-8/) | semantic-release, GitHub Actions: тег → сборка образа в GHCR → деплой |
 
 ---
 
@@ -54,3 +55,20 @@ https://t.me/imperial_dan
 - Изолированный namespace `k8s-hw4`
 
 Подробнее: [hw-4/README.MD](hw-4/README.MD) | Чеклист для защиты: [hw-4/CHECKLIST.MD](hw-4/CHECKLIST.MD)
+
+---
+
+### ДЗ 8: CI/CD
+
+Пайплайн в GitHub Actions, где версия образа считается автоматически по Conventional Commits:
+
+- **semantic-release** — считает следующую версию по сообщениям коммитов, создаёт git-тег `vX.Y.Z` и GitHub Release с release notes
+- **Сборка образа по тегу** — buildx собирает `ghcr.io/fastrapier/hw8:<version>`, версия и git-sha зашиваются в бинарник через `-ldflags`
+- **Деплой по тегу** — `helm upgrade --install` с `--set image.tag=<version>`; тот же чарт используется и локально
+- **Приложение** — минимальный Go HTTP-сервис с `GET /healthz` и `GET /version`
+- На pull request — dry-run версии и сборка образа без push; реальный релиз только при push в `main`
+- Изолированный namespace `k8s-hw8`
+
+Workflow: [.github/workflows/hw8-release.yml](.github/workflows/hw8-release.yml)
+
+Подробнее: [hw-8/README.MD](hw-8/README.MD) | Чеклист для защиты: [hw-8/CHECKLIST.MD](hw-8/CHECKLIST.MD)
