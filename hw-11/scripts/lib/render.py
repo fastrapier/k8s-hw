@@ -104,7 +104,39 @@ def grafana_contact_points():
         return
     for c in points:
         settings = c.get("settings", {})
-        print(f"  {c.get('name')}: type={c.get('type')} addresses={settings.get('addresses')}")
+        print(f"  {c.get('name')}: uid={c.get('uid')} type={c.get('type')} addresses={settings.get('addresses')}")
+
+
+def grafana_test_body():
+    """Тело запроса для POST /api/alertmanager/grafana/config/api/v1/receivers/test.
+
+    На stdin — ответ GET /api/v1/provisioning/contact-points. uid существующей
+    интеграции обязателен: по нему Grafana достаёт сохранённые secure settings,
+    для неизвестного uid отвечает 400.
+    """
+    name = sys.argv[2] if len(sys.argv) > 2 else "email-hw11"
+    points = _load()
+    match = next((c for c in points if c.get("name") == name), None)
+    if match is None:
+        print(json.dumps({"error": f"contact point {name} not found"}, ensure_ascii=False))
+        sys.exit(1)
+    body = {
+        "alert": {
+            "labels": {"alertname": "hw11-test", "severity": "info", "hw": "11"},
+            "annotations": {"summary": "Тестовое уведомление из hw-11"},
+        },
+        "receivers": [{
+            "name": name,
+            "grafana_managed_receiver_configs": [{
+                "uid": match.get("uid"),
+                "name": name,
+                "type": match.get("type"),
+                "settings": match.get("settings", {}),
+                "secureSettings": {},
+            }],
+        }],
+    }
+    print(json.dumps(body, ensure_ascii=False))
 
 
 MODES = {
@@ -114,10 +146,11 @@ MODES = {
     "loki-query": loki_query,
     "grafana-rules": grafana_rules,
     "grafana-contact-points": grafana_contact_points,
+    "grafana-test-body": grafana_test_body,
 }
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or sys.argv[1] not in MODES:
-        print(f"usage: render.py {{{'|'.join(MODES)}}}", file=sys.stderr)
+    if len(sys.argv) < 2 or sys.argv[1] not in MODES:
+        print(f"usage: render.py {{{'|'.join(MODES)}}} [arg]", file=sys.stderr)
         sys.exit(2)
     MODES[sys.argv[1]]()

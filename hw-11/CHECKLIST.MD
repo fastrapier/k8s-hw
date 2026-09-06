@@ -252,16 +252,22 @@ kubectl get pods -n k8s-hw11
 
 ### 3.5 Тестовое письмо и реальное срабатывание
 
-- [ ] **Синтетическое письмо** — кнопкой в UI:
-      Alerting → Contact points → `email-hw11` → Edit → **Test** → Send test notification
-- [ ] Объяснить, почему именно кнопкой: HTTP-эндпоинт
-      `/api/alertmanager/grafana/config/api/v1/receivers/test` в Grafana 12 удалён и
-      отвечает `410 Gone`
-- [ ] **Реальное срабатывание** — прогнать всю цепочку метрика → правило → политика →
-      контакт → SMTP → письмо:
+- [ ] Запустить скрипт — он делает обе проверки по очереди:
   ```bash
   ./scripts/05-test-alert.sh          # ~3 минуты
   ```
+- [ ] **Синтетическое письмо** (первая часть скрипта): `POST
+      /api/alertmanager/grafana/config/api/v1/receivers/test` с uid и настройками
+      контакта, взятыми из `/api/v1/provisioning/contact-points`. Ожидается `HTTP 200`
+      и `"status": "ok"`
+- [ ] Объяснить: этот эндпоинт живёт в Grafana 12.x (чарт ставит appVersion **12.3.1**),
+      а в Grafana 13 удалён — там `410 Gone` и новый API
+      `/apis/notifications.alerting.grafana.app/.../receivers/{uid}/test`. Скрипт
+      распознаёт `410` и подсказывает кнопку в UI
+- [ ] То же кнопкой в UI: Alerting → Contact points → `email-hw11` → Edit → **Test**
+- [ ] **Реальное срабатывание** (вторая часть скрипта) — вся цепочка метрика → правило →
+      политика → контакт → SMTP → письмо. Объяснить, что тестовая кнопка этого не
+      показывает: она отправляет письмо напрямую, минуя правила и политику
 - [ ] Пока скрипт работает, показать в UI Alerting → Alert rules, как правило
       `hw11-ingress-rps` проходит **Normal → Pending → Alerting**
 - [ ] Показать письмо в почте

@@ -24,6 +24,41 @@ curl -fsS --max-time 15 -u "$AUTH" "$BASE/api/prometheus/grafana/api/v1/rules" \
   | python3 "$RENDER" grafana-rules
 
 echo ""
+echo "=== Тестовое уведомление на contact point ==="
+# Эндпоинт есть в Grafana 12.x (наш чарт ставит 12.3.1) и удалён в Grafana 13,
+# где вместо него /apis/notifications.alerting.grafana.app/.../receivers/{uid}/test.
+TEST_BODY="$(curl -fsS --max-time 15 -u "$AUTH" "$BASE/api/v1/provisioning/contact-points" \
+  | python3 "$RENDER" grafana-test-body email-hw11)" || {
+  echo "[ERROR] Не удалось собрать тело запроса — контакт email-hw11 не найден"
+  exit 1
+}
+
+TEST_OUT="$(mktemp)"
+TEST_CODE="$(curl -s -o "$TEST_OUT" -w '%{http_code}' --max-time 30 -u "$AUTH" \
+  -H 'Content-Type: application/json' -X POST \
+  "$BASE/api/alertmanager/grafana/config/api/v1/receivers/test" \
+  -d "$TEST_BODY")"
+echo "  HTTP $TEST_CODE"
+python3 -m json.tool < "$TEST_OUT" 2>/dev/null || cat "$TEST_OUT"
+echo ""
+rm -f "$TEST_OUT"
+
+case "$TEST_CODE" in
+  200)
+    echo "[OK] Тестовое письмо отправлено на $ALERT_EMAIL"
+    ;;
+  410)
+    echo "[WARN] Эндпоинт удалён — это Grafana 13+."
+    echo "       Используйте новый API или кнопку Test в UI:"
+    echo "       http://$GRAFANA_HOST/alerting/notifications"
+    ;;
+  *)
+    echo "[WARN] Тестовое письмо не отправлено (HTTP $TEST_CODE)."
+    echo "       Проверьте SMTP-настройки и логи Grafana ниже."
+    ;;
+esac
+
+echo ""
 echo "=== Проверка SMTP ==="
 # Grafana не отдаёт статус SMTP отдельным эндпоинтом: если конфиг битый,
 # ошибка появляется в логах при первой попытке отправки.
@@ -64,4 +99,3 @@ echo "  1. Проверьте папку «Спам»."
 echo "  2. Логи Grafana: kubectl logs deployment/grafana -n $NAMESPACE -c grafana | grep -i smtp"
 echo "  3. Отправьте тестовое письмо кнопкой в UI:"
 echo "     http://$GRAFANA_HOST/alerting/notifications -> email-hw11 -> Edit -> Test"
-echo "     (HTTP-эндпоинт для теста контакта в Grafana 12 удалён, см. README.MD)"
