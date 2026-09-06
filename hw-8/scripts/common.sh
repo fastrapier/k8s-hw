@@ -7,6 +7,67 @@ GHCR_USER="fastrapier"
 GHCR_REPO="ghcr.io/$GHCR_USER/hw8"
 CHART_DIR="helm/app"
 
+# --- Часть 2: свой раннер через Actions Runner Controller ---------------------
+GITHUB_REPO="fastrapier/k8s-hw"
+GITHUB_REPO_URL="https://github.com/$GITHUB_REPO"
+
+# Версия обоих OCI-чартов ARC пинится: чарт и образ контроллера должны
+# совпадать, а «latest» ломает установку при смене CRD.
+ARC_CHART_VERSION="0.14.2"
+ARC_CONTROLLER_CHART="oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller"
+ARC_RUNNER_CHART="oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set"
+ARC_SYSTEMS_NS="arc-systems"
+ARC_RUNNERS_NS="arc-runners"
+ARC_CONTROLLER_RELEASE="arc"
+ARC_DIR="arc"
+
+# Имя релиза чарта gha-runner-scale-set = имя scale set = label в `runs-on`.
+RUNNER_SCALE_SET="hw8-minikube"
+RUNNER_TOKEN_SECRET="hw8-runner-github-token"
+RUNNER_SA="hw8-runner-deployer"
+RUNNER_CLUSTER_ROLE="hw8-runner-namespace-bootstrap"
+# Repo variable, которая включает self-hosted раннер в пайплайне.
+RUNNER_VAR="HW8_RUNNER"
+ARC_KEYCHAIN_SERVICE="github-arc"
+
+ensure_gh() {
+  require_cmd gh "brew install gh"
+  if ! gh auth status &>/dev/null; then
+    echo "[ERROR] gh не авторизован. Выполните: gh auth login"
+    exit 1
+  fi
+}
+
+# PAT, которым ARC регистрирует раннеры в репозитории. Печатается только в
+# stdout функции: в файлы, values и логи токен не попадает.
+arc_github_token() {
+  local token
+  if token=$(security find-generic-password -a "$GHCR_USER" -s "$ARC_KEYCHAIN_SERVICE" -w 2>/dev/null) &&
+    [ -n "$token" ]; then
+    printf '%s' "$token"
+    return 0
+  fi
+
+  if command -v gh &>/dev/null && token=$(gh auth token 2>/dev/null) && [ -n "$token" ]; then
+    {
+      echo "[WARN] PAT для ARC не найден в macOS Keychain — беру токен gh CLI."
+      echo "       Это OAuth-токен пользователя: он живёт короче PAT и его scope"
+      echo "       меняет 'gh auth refresh'. Для стабильной работы заведите отдельный"
+      echo "       classic PAT со scope 'repo' и положите его в Keychain:"
+      echo "       security add-generic-password -a $GHCR_USER -s $ARC_KEYCHAIN_SERVICE -w YOUR_PAT -U"
+    } >&2
+    printf '%s' "$token"
+    return 0
+  fi
+
+  {
+    echo "[ERROR] Нет токена для регистрации раннера."
+    echo "        security add-generic-password -a $GHCR_USER -s $ARC_KEYCHAIN_SERVICE -w YOUR_PAT -U"
+    echo "        PAT: classic, scope 'repo' (для раннера уровня репозитория)."
+  } >&2
+  return 1
+}
+
 require_cmd() {
   local cmd="$1"
   local install_hint="$2"
