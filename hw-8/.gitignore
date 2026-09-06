@@ -1,3 +1,4 @@
 node_modules/
 bin/
 .version
+/app
