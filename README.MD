@@ -14,6 +14,7 @@ https://t.me/imperial_dan
 | 1-2 | Helm + Vault | [hw1-2/](hw1-2/) | Helm-чарт приложения, интеграция с HashiCorp Vault (AppRole, helm-secrets) |
 | 3 | RabbitMQ + Celery | [hw-3/](hw-3/) | Брокер сообщений, Go Producer/Consumer, Python Celery/Flower/FastAPI |
 | 4 | Redis + кэширование | [hw-4/](hw-4/) | Redis, RedisInsight, CacheManager с TTL, кэширование API-запросов |
+| 10 | Безопасность | [hw-10/](hw-10/) | TruffleHog (pre-commit + CI), Trivy, SonarQube в minikube |
 
 ---
 
@@ -54,3 +55,17 @@ https://t.me/imperial_dan
 - Изолированный namespace `k8s-hw4`
 
 Подробнее: [hw-4/README.MD](hw-4/README.MD) | Чеклист для защиты: [hw-4/CHECKLIST.MD](hw-4/CHECKLIST.MD)
+
+---
+
+### ДЗ 10: Безопасность
+
+Три инструмента на трёх рубежах: секреты, уязвимости зависимостей, качество кода.
+
+- **TruffleHog** — в pre-commit (секрет не попадает в историю) и в пайплайне: на pull request сканируется дифф `base..head`, на push в `main` — вся история ветки
+- **Trivy** — `vuln` + `secret` + `misconfig` по всему репозиторию, отчёт в лог и в SARIF (Security tab). Гейт узкий и потому осмысленный: только CRITICAL с доступным фиксом; принятые риски — в `.trivyignore.yaml` с обоснованием и датой истечения
+- **SonarQube** (Community Build) — Helm-чарт в namespace `k8s-hw10`, Ingress `sonarqube-hw10.local`, покрытие Go в отчёте. Джоба выполняется на self-hosted раннере из ДЗ 8: у GitHub-hosted нет сети до minikube
+- Конфиги инструментов (`.pre-commit-config.yaml`, `sonar-project.properties`, `.trivyignore.yaml`, workflow) лежат в корне репозитория — инструменты ищут их только там
+- Секреты в репозиторий не попадают: пароль админа и CI-токен генерируются скриптом и хранятся в macOS Keychain
+
+Подробнее: [hw-10/README.MD](hw-10/README.MD) | Чеклист для защиты: [hw-10/CHECKLIST.MD](hw-10/CHECKLIST.MD)
