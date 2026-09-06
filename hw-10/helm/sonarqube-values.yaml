@@ -1,0 +1,69 @@
+# values для чарта sonarqube/sonarqube (ДЗ 10, minikube).
+#
+# Секретов здесь нет: monitoringPasscode передаётся через --set из Keychain
+# (см. scripts/02-deploy-sonarqube.sh), пароль админа меняется через API
+# в scripts/03-configure-sonarqube.sh.
+
+# Community Build - бесплатная редакция. Без этого флага чарт тянет образ
+# платной редакции. Ключ edition (developer/enterprise) сознательно не задан.
+community:
+  enabled: true
+
+replicaCount: 1
+
+# С версии чарта 2026.1.0 зависимость от PostgreSQL удалена: из коробки
+# используется встроенная H2. Для учебного стенда этого достаточно, но H2
+# в SonarQube - режим «для тестирования», не для продакшена. Для нормальной
+# БД надо включить jdbcOverwrite и поднять PostgreSQL отдельно.
+jdbcOverwrite:
+  enabled: false
+
+# H2 держит данные в /opt/sonarqube/data: без PVC проект и токены пропадут
+# при первом же перезапуске пода.
+persistence:
+  enabled: true
+  size: 5Gi
+  accessMode: ReadWriteOnce
+
+# Дефолты чарта ставят лимит ephemeral-storage 512000M (~512 ГБ) - на minikube
+# такой под не планируется никогда. Остальное урезано под ноутбук.
+resources:
+  limits:
+    cpu: 2000m
+    memory: 4096M
+    ephemeral-storage: 4096M
+  requests:
+    cpu: 500m
+    memory: 2048M
+    ephemeral-storage: 1536M
+
+# Встроенному Elasticsearch нужен vm.max_map_count. initContainer делает это
+# privileged: на minikube по умолчанию разрешено. Если namespace закрыт
+# Pod Security Admission (restricted), поднять sysctl на нодах и выставить
+# initSysctl.enabled=false.
+initSysctl:
+  enabled: true
+  vmMaxMapCount: 524288
+
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  hosts:
+    - name: sonarqube-hw10.local
+      path: /
+      pathType: Prefix
+  annotations:
+    # sonar-scanner заливает отчёт одним POST: дефолтные 1m nginx-у мало.
+    nginx.ingress.kubernetes.io/proxy-body-size: "64m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+
+# Первый старт распаковывает бандл и поднимает ES - дефолтных порогов не хватает.
+readinessProbe:
+  initialDelaySeconds: 60
+  failureThreshold: 60
+livenessProbe:
+  initialDelaySeconds: 60
+  failureThreshold: 60
+startupProbe:
+  initialDelaySeconds: 60
+  failureThreshold: 60
