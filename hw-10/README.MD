@@ -183,6 +183,13 @@ root-токен Vault `root`, `rabbitmq_password`. Пайплайн от них 
 тарифах; если загрузка недоступна, отчёт остаётся в логе первого шага, и
 ронять из-за этого весь пайплайн незачем.
 
+На момент сдачи в этом репозитории Code scanning **не включён**, и шаг
+загрузки действительно падает с `Resource not accessible by integration` —
+`continue-on-error` его гасит, джоба остаётся зелёной. Чтобы находки поехали
+во вкладку Security, Code scanning надо включить в настройках репозитория
+(Settings → Code security). Пока он выключен, полный отчёт смотрится в логе
+первого шага джобы.
+
 ### `.trivyignore.yaml` — реестр принятых рисков
 
 Формат YAML выбран вместо построчного `.trivyignore` ради двух обязательных
@@ -347,7 +354,7 @@ security find-generic-password -a fastrapier -s sonarqube-hw10 -w
 |---|---|
 | Логи джоб в Actions | полные таблицы Trivy, находки TruffleHog |
 | Job summary | режим сканирования TruffleHog, раннер и статус SonarQube |
-| Security → Code scanning | находки Trivy как алерты с привязкой к строкам (нужен доступный Code scanning) |
+| Security → Code scanning | находки Trivy как алерты с привязкой к строкам. Сейчас Code scanning в репозитории выключен — шаг загрузки гасится `continue-on-error` |
 | SonarQube UI | `http://sonarqube-hw10.local/dashboard?id=k8s-hw` — баги, code smells, покрытие |
 | Локально | `scripts/04..06-*.sh` — те же проверки без CI |
 
