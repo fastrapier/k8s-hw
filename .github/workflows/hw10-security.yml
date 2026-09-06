@@ -1,0 +1,234 @@
+name: hw10 security
+
+# Фильтра paths здесь сознательно нет, в отличие от hw8-release.yml: секрет или
+# уязвимая зависимость могут приехать в любой директории репозитория, поэтому
+# проверки безопасности должны запускаться на любое изменение.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+  # Базы уязвимостей Trivy и детекторы TruffleHog обновляются без нас: код может
+  # быть неизменным, а находки появиться. Отсюда еженедельный прогон.
+  schedule:
+    - cron: '17 3 * * 1'
+
+concurrency:
+  group: hw10-security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  trufflehog:
+    name: TruffleHog - секреты в репозитории
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # fetch-depth: 0 обязателен: action сканирует историю через
+      # `trufflehog git`, на shallow-клоне диапазон не разрешается и шаг падает.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Действие тянется по @main, а не по тегу: у проекта нет движущегося тега
+      # v3 (есть только точные v3.x.y), и именно @main стоит во всех примерах
+      # официального README.
+      - name: TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          # На pull_request base и head пустые: тогда action сам берёт
+          # base..head из события и сканирует ровно диff PR - быстро и по делу.
+          # На push/schedule/dispatch head=<ветка> при пустом base заставляет
+          # сканировать всю историю ветки: так ловится секрет, который был
+          # добавлен и удалён внутри PR (в диффе его уже нет, в истории есть).
+          base: ''
+          head: ${{ github.event_name == 'pull_request' && '' || github.ref_name }}
+          # verified - секрет подтверждён живым обращением к провайдеру,
+          # unknown - проверить не удалось (сеть, нет верификатора).
+          # Заведомо невалидные (unverified) не репортятся: именно поэтому
+          # dev-заглушки репозитория (redis_secret_pass, root-токен Vault)
+          # не красят пайплайн. Подробнее - в hw-10/README.MD.
+          extra_args: --results=verified,unknown
+
+      - name: Итог
+        if: always()
+        env:
+          MODE: ${{ github.event_name == 'pull_request' && 'диапазон base..head (только дифф PR)' || 'вся история ветки' }}
+        run: |
+          {
+            echo "### TruffleHog"
+            echo "- режим: $MODE"
+            echo '- фильтр результатов: `--results=verified,unknown`'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  trivy:
+    name: Trivy - уязвимости, секреты, misconfig
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Нужно для загрузки SARIF в Code scanning.
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+
+      # Шаг 1 - полная картина в лог. Ничего не валит: misconfig-находки в
+      # учебных чартах (46 HIGH) иначе делали бы пайплайн вечно красным.
+      - name: Отчёт по репозиторию (table)
+        uses: aquasecurity/trivy-action@v0.36.0
+        # Подавленные находки не прячем, а показываем отдельной таблицей вместе
+        # с обоснованием из .trivyignore.yaml. У action нет такого входа,
+        # поэтому флаг передаётся переменной окружения Trivy.
+        env:
+          TRIVY_SHOW_SUPPRESSED: 'true'
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          format: table
+          exit-code: 0
+          trivyignores: .trivyignore.yaml
+
+      # Шаг 2 - собственно гейт, узкий и потому осмысленный: только CRITICAL,
+      # только уязвимости зависимостей, только те, где апстрим уже выпустил
+      # фикс (ignore-unfixed). Известные исключения - в .trivyignore.yaml,
+      # каждое с обоснованием и датой истечения.
+      # skip-setup-trivy: бинарь уже поставлен шагом выше.
+      - name: Гейт - CRITICAL с доступным фиксом
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+          trivyignores: .trivyignore.yaml
+          skip-setup-trivy: true
+
+      - name: Отчёт в SARIF
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          limit-severities-for-sarif: true
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: 0
+          trivyignores: .trivyignore.yaml
+          skip-setup-trivy: true
+
+      # continue-on-error: Code scanning доступен не во всех тарифах. Если
+      # загрузка SARIF недоступна, отчёт всё равно остался в логе шага 1 -
+      # ронять из-за этого весь пайплайн незачем.
+      - name: Загрузка SARIF в Code scanning
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-fs
+
+      # Образ появится в GHCR только после мержа ДЗ 8 (его собирает
+      # hw8-release.yml). До тех пор шаг ожидаемо не находит образ, поэтому
+      # continue-on-error, а не отключённый шаг: так видно, что проверка есть.
+      - name: Образ ДЗ 8 (если уже опубликован)
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ghcr.io/${{ github.repository_owner }}/hw8:latest
+          severity: HIGH,CRITICAL
+          format: table
+          exit-code: 0
+          skip-setup-trivy: true
+
+  sonarqube:
+    name: SonarQube - статический анализ
+    # SonarQube живёт в minikube, у GitHub-hosted раннера до него нет сети.
+    # Переменная HW8_RUNNER - метка self-hosted раннера из ДЗ 8 (часть 2);
+    # fallback обязателен, иначе без раннера джоба висела бы в очереди до
+    # таймаута GitHub вместо честного пропуска.
+    runs-on: ${{ vars.HW8_RUNNER || 'ubuntu-latest' }}
+    permissions:
+      contents: read
+    steps:
+      # Секреты читаются через env, а не прямой подстановкой в if: так
+      # значение не попадает в текст скрипта и не логируется.
+      - name: Проверка конфигурации
+        id: cfg
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ] || [ -z "$SONAR_HOST_URL" ]; then
+            echo "::warning::Секреты SONAR_TOKEN и/или SONAR_HOST_URL не заданы - анализ пропущен. Поднимите SonarQube (hw-10/init.sh) и выполните hw-10/scripts/03-configure-sonarqube.sh --set-secrets."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        if: steps.cfg.outputs.ready == 'true'
+        with:
+          # Sonar привязывает замечания к авторам и датам по истории.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        if: steps.cfg.outputs.ready == 'true'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # Покрытие считается до сканера: sonar-scanner только читает готовые
+      # coverage.out по путям из sonar-project.properties.
+      - name: Go-покрытие
+        if: steps.cfg.outputs.ready == 'true'
+        run: |
+          for module in hw1-2 hw-3/go hw-4 hw-8; do
+            [ -f "$module/go.mod" ] || continue
+            echo "::group::go test $module"
+            ( cd "$module" && go test ./... -coverprofile=coverage.out -covermode=atomic ) \
+              || echo "::warning::go test в $module завершился с ошибкой - покрытие может быть неполным"
+            echo "::endgroup::"
+          done
+
+      - name: sonar-scanner
+        if: steps.cfg.outputs.ready == 'true'
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      # continue-on-error: на учебном коде прошлых ДЗ Quality Gate почти
+      # наверняка FAILED. Задача ДЗ - настроить анализ и видеть результат,
+      # а не мгновенно привести четыре сданных ДЗ к чистому листу.
+      - name: Quality Gate
+        if: steps.cfg.outputs.ready == 'true'
+        continue-on-error: true
+        uses: SonarSource/sonarqube-quality-gate-action@v1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Итог
+        if: always()
+        env:
+          READY: ${{ steps.cfg.outputs.ready }}
+          RUNS_ON: ${{ vars.HW8_RUNNER || 'ubuntu-latest' }}
+        run: |
+          {
+            echo "### SonarQube"
+            echo "- раннер: \`$RUNS_ON\`"
+            if [ "$READY" = "true" ]; then
+              echo "- анализ выполнен, отчёт - в UI SonarQube (проект \`k8s-hw\`)"
+            else
+              echo "- пропущен: нет секретов \`SONAR_TOKEN\` / \`SONAR_HOST_URL\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
