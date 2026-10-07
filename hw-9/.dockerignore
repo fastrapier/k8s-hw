@@ -1,0 +1,19 @@
+# VCS
+.git
+.gitignore
+
+# Binaries / build artifacts
+bin/
+*.exe
+*.out
+*.test
+
+# Local env
+.env
+*.swp
+.idea/
+.vscode/
+
+# Caches
+**/node_modules
+**/.DS_Store

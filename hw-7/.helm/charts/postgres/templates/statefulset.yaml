@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels: {{ include "postgres.labels" . | nindent 4 }}
+spec:
+  serviceName: postgres-headless
+  replicas: 1
+  selector:
+    matchLabels: {{ include "postgres.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{ include "postgres.labels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: postgres
+          image: {{ printf "%s:%v" .Values.image.repository .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - -c
+            - max_connections={{ .Values.config.maxConnections }}
+            - -c
+            - shared_buffers={{ .Values.config.sharedBuffers }}
+          envFrom:
+            - secretRef:
+                name: postgres-credentials
+          env:
+            # PGDATA внутри subPath: инициализация падает, если каталог данных —
+            # это точка монтирования тома (в ней есть lost+found).
+            - name: PGDATA
+              value: {{ printf "%s/%s" .Values.storage.mountPath .Values.storage.subPath }}
+          ports:
+            - name: postgresql
+              containerPort: {{ .Values.global.postgres.port }}
+              protocol: TCP
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources: {{ toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.storage.mountPath }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.storage.size | quote }}

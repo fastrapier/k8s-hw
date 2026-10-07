@@ -1,0 +1,34 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/fastrapier/hw8
+  # Тег не имеет значения по умолчанию: его задаёт semantic-release
+  # (в CI) или scripts/02-deploy.sh (локально) через --set image.tag=...
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Публичный пакет в GHCR тянется без секрета; для приватного —
+# создайте ghcr-pull-secret скриптом scripts/02-deploy.sh
+imagePullSecrets: []
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: false
+  className: nginx
+  host: hw8.local
+  path: /
+  pathType: Prefix
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+env: []

@@ -1,0 +1,9 @@
+# Значения, общие для подчартов backend и postgres.
+# Vault в этом ДЗ не используется: тема задания — масштабирование, а не секреты,
+# поэтому реквизиты Postgres кладутся в обычный Secret из values.
+global:
+  postgres:
+    user: hw7
+    password: hw7_secret_pass
+    database: hw7
+    port: 5432

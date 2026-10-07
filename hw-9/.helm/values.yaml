@@ -1,0 +1,108 @@
+# Глобальные значения.
+#
+# В global вынесено всё, что нужно больше чем одному сабчарту: имена сервисов,
+# порты, имя ConfigMap/Secret, хост Ingress, pull secret и секреты приложения.
+# Сабчарты backend и postgres читают только .Values.global.* — так они не знают
+# друг о друге и не дублируют одни и те же константы.
+#
+# Образы werf в сабчартах доступны как .Values.global.werf.images.<name>.ref
+# (в родительском чарте — .Values.werf.image.<name>); werf подкладывает их сам.
+global:
+  imagePullSecret: ghcr-pull-secret
+
+  ingress:
+    className: nginx
+    host: app-hw9.local
+
+  backend:
+    serviceName: backend
+    configMapName: backend-config
+    secretName: backend-secret
+    port: 8080
+    servicePort: 80
+
+  postgres:
+    serviceName: postgres
+    headlessServiceName: postgres-headless
+    configMapName: postgres-config
+    secretName: postgres-secret
+    port: 5432
+
+  # Секреты в репозитории не хранятся. Значения приезжают из Vault:
+  # scripts/02-vault-integration.sh рендерит secret-values.tpl.yaml через vals
+  # и передаёт результат в werf converge как --values.
+  # Шаблоны, которые их используют, помечены required — рендер без секретов упадёт.
+  secrets:
+    postgres:
+      username: ""
+      password: ""
+      database: ""
+    backend:
+      username: ""
+      password: ""
+
+postgres:
+  enabled: true
+
+  replicas: 1
+
+  image:
+    repository: postgres
+    tag: "17"
+    pullPolicy: IfNotPresent
+
+  # NodePort нужен, чтобы подключиться к базе psql-ом с хоста при демонстрации
+  nodePort: 30432
+
+  persistence:
+    name: data
+    mountPath: /var/lib/postgresql/data
+    subPath: pgdata
+    size: 1Gi
+    accessMode: ReadWriteOnce
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+backend:
+  enabled: true
+
+  replicaCount: 2
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+
+  # Непубличные env — обычный ConfigMap
+  config:
+    APP_CONFIG_MAP_ENV_VAR: hw-9-value-from-helm-values
+    APP_READINESS_WARMUP_SECONDS: "1"
+    APP_SHUTDOWN_TIMEOUT_SECONDS: "10"
+
+  persistence:
+    size: 1Gi
+    accessMode: ReadWriteOnce
+    mountPath: /var/lib/backend/data
+
+  cron:
+    enabled: true
+    schedule: "*/1 * * * *"
+    backoffLimit: 2
+
+  migrations:
+    enabled: true
+    backoffLimit: 3
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
