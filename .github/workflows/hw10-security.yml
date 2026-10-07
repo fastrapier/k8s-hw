@@ -201,6 +201,14 @@ jobs:
             echo "::endgroup::"
           done
 
+      - name: Зависимости проверки подписи SonarScanner
+        if: steps.cfg.outputs.ready == 'true'
+        run: |
+          if ! command -v dirmngr >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends dirmngr
+          fi
+
       - name: sonar-scanner
         id: scan
         if: steps.cfg.outputs.ready == 'true'
