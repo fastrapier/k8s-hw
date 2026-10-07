@@ -1,0 +1,6 @@
+# Отрендеренные vals-ом секреты из Vault (создаёт scripts/02-vault-integration.sh)
+secret-values.rendered.yaml
+
+# Артефакты werf и go
+.werf-build-report.json
+bin/

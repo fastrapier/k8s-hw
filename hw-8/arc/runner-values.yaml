@@ -1,0 +1,31 @@
+# Values для чарта gha-runner-scale-set (Actions Runner Controller).
+# Имя релиза = имя scale set = label в `runs-on`, поэтому здесь его нет:
+# см. RUNNER_SCALE_SET в scripts/common.sh.
+
+githubConfigUrl: https://github.com/fastrapier/k8s-hw
+
+# Вариант «pre-defined secret»: имя строкой. Тогда чарт секрет не создаёт,
+# и PAT не проходит через helm values, а значит не остаётся в истории релиза.
+githubConfigSecret: hw8-runner-github-token
+
+# minRunners: 1 — один под ждёт задание заранее, чтобы на защите джоба
+# не стартовала с холодного старта. maxRunners: 2 — потолок для minikube.
+minRunners: 1
+maxRunners: 2
+
+# Чарт умеет находить SA контроллера сам, через `lookup` по деплойментам.
+# Задаём явно: так `helm template` работает без кластера, а установка не
+# зависит от того, сколько контроллеров нашлось в кластере.
+controllerServiceAccount:
+  namespace: arc-systems
+  name: arc-gha-rs-controller
+
+# containerMode не задан сознательно: dind нужен джобам, которые собирают
+# образы, а сборка в этом пайплайне осталась на GitHub-hosted раннере
+# (см. hw-8/README.MD, раздел «Часть 2 — свой раннер»).
+template:
+  spec:
+    # При заданном serviceAccountName чарт не создаёт свой SA
+    # `<scale-set>-gha-rs-no-permission`, а берёт наш — с правами на
+    # `helm upgrade` в k8s-hw8 (arc/deployer-rbac.yaml).
+    serviceAccountName: hw8-runner-deployer

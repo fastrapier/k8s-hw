@@ -1,0 +1,17 @@
+Релиз {{ .Release.Name }} задеплоен в namespace {{ .Release.Namespace }}.
+{{- with .Values.werf }}
+
+Образы werf (в родительском чарте видны как .Values.werf.image.<name>,
+в сабчартах — как .Values.global.werf.images.<name>.ref):
+  app        {{ .image.app }}
+  cron       {{ .image.cron }}
+  migrations {{ .image.migrations }}
+{{- end }}
+
+Приложение:  http://{{ .Values.global.ingress.host }}/
+             (нужен minikube tunnel и запись в /etc/hosts)
+
+Проверка:
+  kubectl get pods -n {{ .Release.Namespace }}
+  kubectl logs job/{{ .Values.global.backend.serviceName }}-migrations -n {{ .Release.Namespace }}
+  curl http://{{ .Values.global.ingress.host }}/db/requests

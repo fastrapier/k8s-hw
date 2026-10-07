@@ -1,0 +1,14 @@
+apiVersion: v2
+name: hw7
+description: HW7 - Go API + PostgreSQL под нагрузкой Locust, HPA и VPA
+type: application
+version: 1.0.0
+# Подчарты лежат в charts/ рядом, поэтому repository пустой: скачивать нечего,
+# а без объявления helm lint считает их «missing dependencies».
+dependencies:
+  - name: backend
+    version: 1.0.0
+    repository: ""
+  - name: postgres
+    version: 1.0.0
+    repository: ""
