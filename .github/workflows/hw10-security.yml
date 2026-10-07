@@ -214,6 +214,8 @@ jobs:
         if: steps.cfg.outputs.ready == 'true'
         uses: SonarSource/sonarqube-scan-action@v8
         env:
+          LANG: C.UTF-8
+          LC_ALL: C.UTF-8
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
