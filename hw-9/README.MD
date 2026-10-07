@@ -1,5 +1,7 @@
 # ДЗ 9 — Werf
 
+Команды для текущего стенда: **[CHECKLIST.MD → Подготовка](CHECKLIST.MD#подготовка)**.
+
 Приложение из ДЗ 1-2 (Go HTTP API + PostgreSQL) переехало из «чарт + Makefile + helm-secrets»
 в самодостаточный werf-проект: `werf.yaml` + `.helm/` с сабчартами и глобальными values.
 Секреты и docker-токен приезжают из Vault одним скриптом интеграции.
@@ -58,6 +60,7 @@
 ```
 hw-9/
 ├── werf.yaml                   # project: hw9, три образа из Dockerfile-ов
+├── werf-giterminism.yaml        # разрешает временный values-файл из Vault
 ├── init.sh                     # 01 → 02
 ├── teardown.sh                 # werf dismiss + Vault + PVC + /etc/hosts
 ├── TASK.MD  README.MD  CHECKLIST.MD
@@ -240,6 +243,10 @@ global:
 Файл создаётся с `chmod 600`, лежит в `.gitignore` и удаляется по `trap` вместе с временным
 docker config. Скрипт проверяет, что в результате не осталось ни одной строки `ref+vault://`.
 
+`werf-giterminism.yaml` разрешает читать `secret-values.rendered.yaml` с диска через
+`helm.allowUncommittedFiles`. Это исключение для временного values-файла из Vault;
+его содержимое не коммитится.
+
 **4. Деплой.**
 
 ```bash
@@ -261,9 +268,10 @@ werf converge --dev \
 # токен GHCR (packages:read + write) должен лежать в Keychain:
 security add-generic-password -a fastrapier -s ghcr.io -w YOUR_GITHUB_TOKEN -U
 
-minikube start
-minikube tunnel          # отдельный терминал
-cd hw-9 && ./init.sh     # Vault → интеграция → сборка → деплой
+export MINIKUBE_PROFILE=k8s-exam
+minikube -p "$MINIKUBE_PROFILE" start
+minikube -p "$MINIKUBE_PROFILE" tunnel  # отдельный терминал
+cd hw-9 && ./init.sh                  # Vault → интеграция → сборка → деплой
 ```
 
 ## Доступ
@@ -309,27 +317,50 @@ werf dismiss --release hw9 --namespace k8s-hw9
 ```bash
 kubectl get pods,svc,ingress,cronjob -n k8s-hw9
 kubectl logs job/backend-migrations -n k8s-hw9      # golang-migrate up
-kubectl get secret postgres-secret -n k8s-hw9 -o jsonpath='{.data.password}' | base64 -d
-curl http://app-hw9.local/secret                     # то же значение, что в Vault
-curl -X POST http://app-hw9.local/db/requests
+curl --resolve app-hw9.local:80:127.0.0.1 -i --max-time 10 http://app-hw9.local/healthz
+curl --resolve app-hw9.local:80:127.0.0.1 -sS --max-time 10 http://app-hw9.local/secret
+curl --resolve app-hw9.local:80:127.0.0.1 -i --max-time 10 -X POST http://app-hw9.local/db/requests
 ```
+
+`/secret` возвращает пользователя и маску пароля. `--resolve` обходит задержки
+DNS для `.local` на macOS, сохраняя имя хоста для маршрутизации Ingress.
 
 ## Что проверено, а что нет
 
-Проверено статически, без кластера (Docker и minikube не поднимались):
+### Живой прогон 07.10.2026
 
-* `go build ./... && go vet ./... && go test ./...` — зелёные, module `hw-9`;
-* `werf render --dev --stub-tags` — зелёный, отдаёт Deployment, StatefulSet, Job, CronJob,
-  4 Service, Ingress, 2 ConfigMap, 3 Secret, PVC;
-* рендер **без** секретов падает на `required` — как и задумано;
-* `--set postgres.enabled=false` действительно выключает сабчарт;
-* подстановка образов по именам проверена через `helm template` с подменой
-  `global.werf.images.*.ref`;
-* `bash -n` для всех скриптов; `vals eval` на шаблоне разбирает `ref+vault://` (падает
-  только на отсутствии Vault).
+Стенд: macOS / Apple Silicon, Minikube `k8s-exam`, namespace `k8s-hw9`, werf 2.75.3.
 
-Живьём **не проверялось**: сборка образов, `werf cr login`, push в GHCR, `werf converge`
-в кластер, работа Job миграций и CronJob, доступность приложения через Ingress.
+| Проверка | Фактический результат |
+|---|---|
+| Vault | `vault-0` готов, созданы KV-секреты, политика `app-policy` и AppRole `app-role` |
+| Интеграция | AppRole login, чтение docker-токена, `werf cr login` и раскрытие ссылок через `vals` прошли |
+| Сборка и публикация | Три образа `app`, `cron`, `migrations` опубликованы в `ghcr.io/fastrapier/hw9` |
+| Деплой | `Succeeded release hw9`, API 2/2, PostgreSQL 1/1; успешный запуск converge — 53,20 с |
+| Миграции | Выполнены `create_requests_table` и `create_cron_runs_table` |
+| Ingress | `/healthz` — HTTP 200, `{"status":"ok"}` |
+| Секреты в API | `/secret` — `{"password":"p***d","username":"developer"}` |
+| БД | Две записи через `POST /db/requests`, ID 1 и 2 |
+| CronJob | Три последовательных запуска завершились `Complete 1/1` |
+| Повторный деплой | 7,96 с; все три образа из кеша, пересоздан только Job миграций, результат `no change` |
+| Сохранность БД | После повторного деплоя следующая запись получила ID 3 |
+
+Исправления, проверенные этим прогоном:
+
+* выбранный `MINIKUBE_PROFILE` используется для проверки кластера, контекста и addons;
+* включён BuildKit; пользовательские Helm-плагины изолированы до `werf cr login`;
+* `werf-giterminism.yaml` разрешает временный values-файл, который остаётся в `.gitignore`
+  и удаляется после работы скрипта.
+
+### Статические проверки
+
+В исходном PR проверялись Go build/vet/test, рендер с фиктивными секретами,
+отказ рендера без обязательных секретов, выключение сабчарта и подстановка образов.
+При подготовке стенда повторно проверены синтаксис скриптов и рендер с временным
+values-файлом без добавления его в Git.
+
+`teardown.sh`, восстановление после полной очистки, Swagger UI и `/pvc-test`
+в текущем живом прогоне не проверялись.
 
 ## Очистка
 

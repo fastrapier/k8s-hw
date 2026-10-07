@@ -3,11 +3,72 @@
 ## Подготовка
 
 ```bash
-security add-generic-password -a fastrapier -s ghcr.io -w YOUR_GITHUB_TOKEN -U   # один раз
-minikube start
-minikube tunnel        # отдельный терминал
-cd hw-9 && ./init.sh   # ~6-8 минут (Vault → интеграция → сборка → деплой)
+cd /Users/notwork/dopki/k8s-hw/hw-9
+export MINIKUBE_PROFILE=k8s-exam
+kubectl config use-context k8s-exam
+minikube -p k8s-exam status
+werf version
+vals version
+
+# Токен GHCR уже сохранён в Keychain при подготовке предыдущих ДЗ.
+# Проверка по шагам:
+./scripts/01-setup-vault.sh
+./scripts/02-vault-integration.sh
+
+# Для повторного полного запуска:
+./init.sh
 ```
+
+Для Ingress в отдельном терминале держать `minikube -p k8s-exam tunnel`.
+Если туннель уже запущен для этого профиля, продолжать использовать его.
+
+После деплоя:
+
+```bash
+kubectl get pods,svc,ingress,jobs,cronjob -n k8s-hw9
+kubectl logs job/backend-migrations -n k8s-hw9
+curl --resolve app-hw9.local:80:127.0.0.1 -i --max-time 10 http://app-hw9.local/healthz
+curl --resolve app-hw9.local:80:127.0.0.1 -sS --max-time 10 http://app-hw9.local/secret
+curl --resolve app-hw9.local:80:127.0.0.1 -i --max-time 10 -X POST http://app-hw9.local/db/requests
+```
+
+`--resolve` убирает задержку DNS для `.local` на macOS. В интеграции включён
+BuildKit, а пользовательские Helm-плагины изолированы для совместимости с werf.
+
+## Короткий показ на экзамене
+
+На подготовленном стенде установка Vault заново не нужна. Оставить туннель запущенным,
+выполнить команды проверки выше и показать файлы:
+
+```bash
+cat werf.yaml
+cat .helm/Chart.yaml
+cat .helm/values.yaml
+cat secret-values.tpl.yaml
+cat werf-giterminism.yaml
+kubectl exec vault-0 -n k8s-hw9 -- vault policy read app-policy
+kubectl exec vault-0 -n k8s-hw9 -- vault read auth/approle/role/app-role
+```
+
+Объяснение: werf собирает три образа и деплоит чарт. Сабчарты backend и postgres
+используют общие `global` values. Скрипт входит в Vault по AppRole, получает токен
+GHCR, авторизует registry, раскрывает ссылки на секреты через vals и запускает converge.
+
+Показ повторного деплоя:
+
+```bash
+./scripts/02-vault-integration.sh
+curl --resolve app-hw9.local:80:127.0.0.1 -sS --max-time 10 -X POST http://app-hw9.local/db/requests
+```
+
+Ожидаем кеш образов, повторный Job миграций с `no change` и продолжение последовательности ID.
+Job пересоздаётся на upgrade как Helm-хук; Deployment и PostgreSQL при отсутствии
+изменений не пересоздаются.
+
+Прогон 07.10.2026: API 2/2, PostgreSQL 1/1, обе миграции и три запуска CronJob успешны;
+healthz — 200, секреты отображаются с маской пароля, записи получили ID 1 и 2.
+Повторный деплой занял 7,96 с; следующая запись получила ID 3.
+Очистка стенда в этом прогоне не проверялась.
 
 ---
 
@@ -136,6 +197,7 @@ cd hw-9 && ./init.sh   # ~6-8 минут (Vault → интеграция → с�
 - [ ] Показать, что отрендеренного файла нет и он в `.gitignore`:
   ```bash
   cat .gitignore
+  cat werf-giterminism.yaml          # разрешение читать временные values вне Git
   ls secret-values.rendered.yaml 2>&1     # No such file — удалён по trap
   git status --short
   ```
@@ -149,14 +211,15 @@ cd hw-9 && ./init.sh   # ~6-8 минут (Vault → интеграция → с�
 
 - [ ] Показать, что в пользовательском конфиге кред нет:
   ```bash
-  cat ~/.docker/config.json
+  jq '{credsStore, registries: ((.auths // {}) | keys)}' ~/.docker/config.json
   ```
   `credsStore: desktop` — креды в Keychain, в файле пусто.
 - [ ] Объяснить: поэтому скрипт логинится в `WERF_DOCKER_CONFIG=$(mktemp -d)`, иначе
   `--set-docker-config-json-value` собрал бы пустой `imagePullSecret` и поды не скачали бы образы.
 - [ ] Показать получившийся pull secret:
   ```bash
-  kubectl get secret ghcr-pull-secret -n k8s-hw9 -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d
+  kubectl get secret ghcr-pull-secret -n k8s-hw9 -o jsonpath='{.data.\.dockerconfigjson}' \
+    | base64 -d | jq '{registries: (.auths | keys), has_auth: ((.auths["ghcr.io"].auth // "") | length > 0)}'
   ```
 
 ### 11. Задеплоенный werf-проект
@@ -172,14 +235,14 @@ cd hw-9 && ./init.sh   # ~6-8 минут (Vault → интеграция → с�
   ```
 - [ ] Секреты доехали из Vault в поды:
   ```bash
-  kubectl exec vault-0 -n k8s-hw9 -- vault kv get -field=password secret/backend
-  curl -s http://app-hw9.local/secret
+  kubectl exec vault-0 -n k8s-hw9 -- vault kv get -field=username secret/backend
+  curl --resolve app-hw9.local:80:127.0.0.1 -sS --max-time 10 http://app-hw9.local/secret
   ```
-  Значения должны совпасть.
+  Пользователь должен совпасть; API возвращает пароль в виде маски.
 - [ ] Приложение и БД работают:
   ```bash
-  curl -s http://app-hw9.local/healthz
-  curl -s -X POST http://app-hw9.local/db/requests
+  curl --resolve app-hw9.local:80:127.0.0.1 -sS --max-time 10 http://app-hw9.local/healthz
+  curl --resolve app-hw9.local:80:127.0.0.1 -sS --max-time 10 -X POST http://app-hw9.local/db/requests
   ```
 - [ ] CronJob пишет в БД (подождать минуту):
   ```bash
@@ -189,7 +252,7 @@ cd hw-9 && ./init.sh   # ~6-8 минут (Vault → интеграция → с�
 
 ### 12. Идемпотентность и очистка
 
-- [ ] Повторный `werf converge` — no changes:
+- [ ] Повторный `werf converge` — кеш образов и повторный Job миграций с `no change`:
   ```bash
   ./scripts/02-vault-integration.sh
   ```
