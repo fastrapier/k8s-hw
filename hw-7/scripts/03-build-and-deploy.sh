@@ -24,6 +24,8 @@ DOCKER_BUILDKIT=1 HELM_PLUGINS="$WERF_HELM_PLUGINS" werf converge --dev \
   --repo "$GHCR_REPO" \
   --namespace "$NAMESPACE"
 
+check_db_schema
+
 echo ""
 echo "=== Состояние ==="
 kubectl get deployment,statefulset,hpa,vpa -n "$NAMESPACE" 2>/dev/null || true

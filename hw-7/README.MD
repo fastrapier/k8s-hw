@@ -17,8 +17,8 @@ Go HTTP API с PostgreSQL под нагрузкой Locust: начальные `
         │              │       │ CPU/RAM │ CPU/RAM                                    │
         │              │       ▼         ▼                                            │
         │              │  ┌─────────┐  ┌──────────────────┐                           │
-        │              │  │   HPA   │  │  VPA recommender │  updateMode: "Off"        │
-        │              │  │ api     │  │  api             │  → только рекомендации    │
+        │              │  │   HPA   │  │  VPA recommender │  updateMode: "Recreate"   │
+        │              │  │ api     │  │  api             │  → memory request         │
         │              │  │ cpu 70% │  └──────────────────┘                           │
         │              │  │ 2..6    │                                                 │
         │              │  └────┬────┘                                                 │
@@ -289,6 +289,18 @@ HPA использует CPU request `50m` как знаменатель и во
 Менять ресурсы по этой ступени рано: первая ступень с ошибками приложения
 внутри кластера ещё не найдена.
 
+Перед новым стресс-тестом после перезапуска кластера проверьте схему БД:
+
+```bash
+kubectl exec -n k8s-hw7 postgres-0 -- sh -c \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM requests"'
+```
+
+Если таблицы нет, повторите `./scripts/03-build-and-deploy.sh`: Helm hook
+запустит Job миграций. Прогон 07.10.2026 на 1600 пользователей не является
+проверкой предела: `/healthz` отвечал, но все DB-эндпоинты возвращали 500,
+поскольку в Postgres отсутствовала таблица `requests` ещё до нагрузки.
+
 Где брать цифры:
 
 - Users / RPS / avg / p95 / ошибки — вывод `06-find-max-users.sh` или
@@ -372,24 +384,24 @@ metrics-server подчартом отключён — он уже стоит ad
 
 ```yaml
 updatePolicy:
-  updateMode: "Off"
+  updateMode: "Recreate"
 resourcePolicy:
   containerPolicies:
     - containerName: api
-      controlledResources: ["cpu", "memory"]
+      controlledResources: ["memory"]
       controlledValues: RequestsOnly
-      minAllowed: { cpu: 25m,   memory: 32Mi }
-      maxAllowed: { cpu: 1000m, memory: 512Mi }
+      minAllowed: { memory: 32Mi }
+      maxAllowed: { memory: 512Mi }
 ```
 
 Best practices:
 
 | Практика | Как сделано и почему |
 |---|---|
-| `updateMode: "Off"` рядом с HPA | HPA масштабирует по CPU, а активный VPA правит CPU-`requests` — то есть знаменатель метрики HPA. Два контроллера начинают гонять один сигнал друг против друга. В режиме `Off` VPA только считает рекомендации, конфликта нет. |
+| `updateMode: "Recreate"`, только память | HPA масштабирует по CPU, VPA меняет memory request. CPU request остаётся `50m`, поэтому знаменатель метрики HPA не меняется. Для применения новой рекомендации VPA может пересоздать pod. |
 | `controlledValues: RequestsOnly` | `RequestsAndLimits` пересчитал бы и `limits`, сохраняя пропорцию, и съел бы запас на всплеск, заложенный в части 1. |
 | `min/maxAllowed` заданы | Ограничивают рекомендацию снизу (не «0m», на котором под не стартует) и сверху (не больше, чем есть на узле minikube). |
-| Кавычки у `"Off"` | Без кавычек YAML читает `Off` как boolean `false`, и объект не проходит валидацию enum. |
+| Режим указан строкой | `Recreate` явно задаёт применение рекомендаций, не полагаясь на значение по умолчанию. |
 | Один VPA на один контроллер | Пересечение `targetRef` у двух VPA — неопределённое поведение. |
 
 Проверка рекомендаций:
@@ -399,7 +411,11 @@ kubectl describe vpa api -n k8s-hw7
 ```
 
 В `Recommendation → Container Recommendations` должны быть `Target`,
-`Lower Bound`, `Upper Bound`, `Uncapped Target` по `cpu` и `memory`.
+`Lower Bound`, `Upper Bound`, `Uncapped Target` по памяти.
+После включения VPA новые pod'ы API получили CPU request `50m` и memory
+request `49566436` байт (~47Mi); аннотация `vpaUpdates` указывает только
+`memory request`. В шаблоне Deployment осталось `50m/64Mi`, поскольку
+VPA меняет ресурсы создаваемого pod'а, а не шаблон Deployment.
 Рекомендации появляются не сразу — recommender набирает историю: ориентир
 5–15 минут работы, лучше под нагрузкой. Пока их нет, `describe` показывает
 только `spec`, а `Provided` в condition-ах равен `False`.

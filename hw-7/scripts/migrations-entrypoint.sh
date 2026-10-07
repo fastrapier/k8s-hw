@@ -10,6 +10,5 @@ set -eu
 
 DB_URL="postgres://${APP_POSTGRES_USER}:${APP_POSTGRES_PASSWORD}@${APP_POSTGRES_HOST}:${APP_POSTGRES_PORT}/${APP_POSTGRES_DB}?sslmode=disable"
 
-echo "[migrate] applying migrations: $DB_URL"
+echo "[migrate] applying migrations to ${APP_POSTGRES_HOST}/${APP_POSTGRES_DB}"
 exec /usr/local/bin/migrate -path /migrations -database "$DB_URL" up
-

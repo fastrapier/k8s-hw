@@ -62,19 +62,16 @@ autoscaling:
           value: 1
           periodSeconds: 60
 
-# ЧАСТЬ 3 — VPA. updateMode "Off": только рекомендации.
-# Активный VPA по CPU на том же Deployment конфликтует с HPA по CPU
-# (оба правят один сигнал) — см. README.MD.
+# ЧАСТЬ 3 — VPA применяет рекомендации по памяти. HPA управляет числом
+# реплик по CPU; CPU requests VPA не меняет.
 vpa:
   enabled: true
-  updateMode: "Off"
-  controlledResources: ["cpu", "memory"]
+  updateMode: "Recreate"
+  controlledResources: ["memory"]
   controlledValues: RequestsOnly
   minAllowed:
-    cpu: 25m
     memory: 32Mi
   maxAllowed:
-    cpu: 1000m
     memory: 512Mi
 
 migrations:

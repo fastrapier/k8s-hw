@@ -7,7 +7,14 @@ minikube start
 minikube addons enable ingress
 minikube tunnel          # отдельный терминал, держать открытым
 cd hw-7 && ./init.sh     # metrics-server, VPA, приложение, locust-operator
+kubectl exec -n k8s-hw7 postgres-0 -- sh -c \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM requests"'
 ```
+
+Если проверка таблицы `requests` не прошла, повторить
+`./scripts/03-build-and-deploy.sh` перед нагрузкой. 07.10.2026 прогон на
+1600 пользователей дал HTTP 500 из-за отсутствующей схемы БД, а не из-за
+достигнутого предела приложения.
 
 Затем **до защиты** прогнать нагрузочную часть и вписать цифры в таблицу
 «Результаты исследования» в [README.MD](README.MD):
@@ -180,11 +187,11 @@ VPA должен «пожить» под нагрузкой хотя бы 15 м�
   ```
 - [ ] Показать манифест `.helm/charts/backend/templates/vpa.yaml`.
 - [ ] Пройти по best practices:
-  - `updateMode: "Off"` — не конфликтует с HPA по CPU (иначе VPA правит
-    знаменатель метрики HPA);
-  - `controlledValues: RequestsOnly` — не ломает запас, заложенный в limits;
+  - `updateMode: "Recreate"`, `controlledResources: ["memory"]` — VPA применяет
+    memory request, а CPU request для HPA остаётся постоянным;
+  - `controlledValues: RequestsOnly` — VPA не меняет memory limit;
   - `min/maxAllowed` — рекомендация не уедет в 0m и не превысит узел;
-  - `"Off"` в кавычках — иначе YAML прочитает это как boolean.
+  - VPA может пересоздать pod для применения новой рекомендации.
 
 ### 3.4 VPA генерирует рекомендации
 
@@ -195,6 +202,8 @@ VPA должен «пожить» под нагрузкой хотя бы 15 м�
 - [ ] Показать в выводе блок `Recommendation → Container Recommendations`:
       `Target`, `Lower Bound`, `Upper Bound`, `Uncapped Target` — и что там
       есть **memory**.
+- [ ] Показать ресурсы новых pod'ов: CPU request `50m`, memory request
+      около `47Mi`, аннотацию `vpaUpdates: ... memory request`.
 - [ ] Сравнить рекомендацию VPA с limits, выставленными руками по замерам.
 
 ---

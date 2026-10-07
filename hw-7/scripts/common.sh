@@ -194,12 +194,34 @@ check_api_reachable() {
     curl -fsS --max-time 5 "$url/healthz" >/dev/null 2>&1 && reachable=0
   fi
   if [ "$reachable" -eq 0 ]; then
-    echo "[OK] $url отвечает"
-    return 0
+    if [ -n "${LOCUST_HOST_HEADER:-}" ]; then
+      curl -fsS --max-time 5 -H "Host: $LOCUST_HOST_HEADER" "$url/db/stats" >/dev/null 2>&1 && reachable=2
+    else
+      curl -fsS --max-time 5 "$url/db/stats" >/dev/null 2>&1 && reachable=2
+    fi
+    if [ "$reachable" -eq 2 ]; then
+      echo "[OK] $url отвечает, DB-эндпоинт готов"
+      return 0
+    fi
+    echo "[ERROR] $url/healthz отвечает, но /db/stats недоступен." >&2
+    echo "  Проверьте схему Postgres и повторно выполните ./scripts/03-build-and-deploy.sh." >&2
+    return 1
   fi
   echo "[ERROR] $url не отвечает на /healthz"
   echo "  Проверьте: minikube tunnel запущен, Ingress $API_HOST доступен,"
   echo "  приложение задеплоено (./scripts/03-build-and-deploy.sh)."
   echo "  Либо укажите свой адрес: LOCUST_TARGET=http://127.0.0.1:8080 $0"
+  return 1
+}
+
+check_db_schema() {
+  if kubectl exec -n "$NAMESPACE" postgres-0 -- sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM requests"' \
+    >/dev/null 2>&1; then
+    echo "[OK] схема Postgres готова"
+    return 0
+  fi
+  echo "[ERROR] Таблица requests в Postgres недоступна." >&2
+  echo "  Повторите ./scripts/03-build-and-deploy.sh, чтобы запустить миграции." >&2
   return 1
 }

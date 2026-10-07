@@ -7,6 +7,7 @@ source "$SCRIPT_DIR/common.sh"
 
 ensure_minikube
 ensure_namespace
+check_db_schema
 
 echo "=== Helm repo $LOCUST_OPERATOR_REPO_NAME ==="
 add_helm_repo "$LOCUST_OPERATOR_REPO_NAME" "$LOCUST_OPERATOR_REPO_URL"
