@@ -1,12 +1,119 @@
 # Чеклист для защиты ДЗ 8
 
+## Быстрая шпаргалка для экзамена
+
+Проверенный стенд: профиль `k8s-exam`, namespace приложения `k8s-hw8`,
+раннер `hw8-minikube`, опубликованный образ `ghcr.io/fastrapier/hw8:1.0.0`.
+
+### 1. Выбрать стенд и проверить его
+
+```bash
+cd /Users/notwork/dopki/k8s-hw/hw-8
+export MINIKUBE_PROFILE=k8s-exam
+kubectl config use-context k8s-exam
+
+kubectl get pods -n k8s-hw8
+kubectl get pods -n arc-systems
+kubectl get pods -n arc-runners
+gh variable list --repo fastrapier/k8s-hw
+gh api repos/fastrapier/k8s-hw/actions/runners \
+  --jq '.runners[] | "\(.name) \(.status)"'
+```
+
+Ожидаем две готовые реплики приложения, готовые контроллер/listener,
+раннер `online` и `HW8_RUNNER=hw8-minikube`.
+
+### 2. Показать выполненный полный цикл CI/CD
+
+```bash
+gh release view v1.0.0 --repo fastrapier/k8s-hw
+gh run view 37623872269 --repo fastrapier/k8s-hw
+gh run view 37623872269 --job 112801315675 --log --repo fastrapier/k8s-hw
+docker buildx imagetools inspect ghcr.io/fastrapier/hw8:1.0.0
+```
+
+В [проверенном прогоне](https://github.com/fastrapier/k8s-hw/actions/runs/37623872269)
+успешны все три джобы: версия → сборка и публикация образа → деплой.
+В логе деплоя показать `runs-on: hw8-minikube`,
+`RUNNER_ENVIRONMENT: self-hosted`, `внутри кластера: да`.
+У образа — платформы `linux/amd64` и `linux/arm64`.
+
+### 3. Повторить деплой вживую
+
+```bash
+gh workflow run hw8-release.yml --ref main -f tag=1.0.0 \
+  --repo fastrapier/k8s-hw
+gh run watch --repo fastrapier/k8s-hw
+```
+
+Выбрать новый прогон `workflow_dispatch` для `main`. Он деплоит готовый тег:
+`release` и `build` пропущены, `deploy` выполнен на ARC-раннере.
+Во втором терминале можно наблюдать его под:
+
+```bash
+kubectl --context=k8s-exam get pods -n arc-runners -w
+```
+
+После джобы под раннера удаляется, ARC создаёт новый ожидающий под.
+
+### 4. Подтвердить образ, версию и коммит
+
+```bash
+kubectl get deployment hw8-app -n k8s-hw8 \
+  -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+kubectl exec -n k8s-hw8 deployment/hw8-app \
+  -- wget -qO- http://127.0.0.1:8080/version
+```
+
+Для релиза `1.0.0` ожидаемый ответ:
+
+```json
+{"version":"1.0.0","commit":"ee7edd6f80b5f26e78bdf4008a5d9c16a3fb850e","env_version":"1.0.0"}
+```
+
+### 5. Открыть приложение в браузере
+
+В отдельном терминале:
+
+```bash
+kubectl --context=k8s-exam port-forward -n k8s-hw8 svc/hw8-app 8088:80
+```
+
+Открыть <http://127.0.0.1:8088/version> или <http://127.0.0.1:8088/healthz>.
+Этот способ не требует туннеля или Ingress; CI-деплой использует чарт с
+`ingress.enabled=false`.
+
+### Если после перезапуска стенда раннер не готов
+
+```bash
+minikube start -p k8s-exam
+./scripts/03-deploy-runner.sh
+```
+
+Первая загрузка образа раннера на нашем стенде заняла 7 минут 38 секунд;
+скрипт ждёт до 10 минут. Приложение при необходимости восстанавливается
+командой `./scripts/02-deploy.sh 1.0.0`.
+
+Если тег совпал с ранее загруженным локальным образом, а `/version` показывает
+старый коммит, принудительно скачать опубликованный образ:
+
+```bash
+kubectl patch deployment hw8-app -n k8s-hw8 --type=strategic \
+  -p '{"spec":{"template":{"spec":{"containers":[{"name":"app","imagePullPolicy":"Always"}]}}}}'
+kubectl rollout status deployment/hw8-app -n k8s-hw8 --timeout=300s
+```
+
+---
+
 ## Подготовка
 
 ```bash
-minikube start
-minikube tunnel                # отдельный терминал
+export MINIKUBE_PROFILE=k8s-exam
+minikube start -p k8s-exam
+kubectl config use-context k8s-exam
+minikube tunnel -p k8s-exam     # отдельный терминал, если нужен Ingress
 git fetch --tags
-cd hw-8 && ./init.sh           # деплой последнего тега + раннер, ~5 минут
+cd hw-8 && ./init.sh 1.0.0     # из корня репозитория: деплой + раннер
 ```
 
 Проверить, что раннер поднялся и подключён:
@@ -35,9 +142,9 @@ gh variable list               # ожидаем HW8_RUNNER=hw8-minikube
       `feat!`/`BREAKING CHANGE` → major, `docs`/`chore` → релиза нет
 - [ ] Объяснить, почему нет `@semantic-release/npm` и `@semantic-release/git`:
       «в npm не публикуем, CHANGELOG в репозиторий не коммитим»
-- [ ] Объяснить про merge-коммиты: «`Merge pull request #N` не является
-      Conventional Commit и релиза не даёт, поэтому мержим squash-ом
-      с conventional-заголовком»
+- [ ] Объяснить про merge-коммиты: «Сам `Merge pull request #N` не влияет на
+      версию, но при обычном merge учитываются Conventional Commits внутри PR.
+      При squash итоговое сообщение должно иметь conventional-формат»
 
 ### 2. semantic-release — вычисление версии вживую
 
@@ -47,10 +154,11 @@ gh variable list               # ожидаем HW8_RUNNER=hw8-minikube
   export GITHUB_TOKEN=$(gh auth token)
   ./scripts/01-release-dry-run.sh
   ```
-- [ ] Показать вывод: `The next release version is 1.0.0`
-- [ ] Показать, что версия легла в файл:
+- [ ] Показать рассчитанную версию; после релиза без новых подходящих коммитов
+      нормален результат «релиз не требуется». Dry-run не создаёт тег или Release.
+- [ ] Если версия рассчитана, показать файл из текущей директории `hw-8`:
   ```bash
-  cat hw-8/.version
+  cat .version
   ```
 
 ### 3. Пайплайн в GitHub Actions
@@ -131,10 +239,12 @@ gh variable list               # ожидаем HW8_RUNNER=hw8-minikube
     --image=curlimages/curl -- curl -s http://hw8-app/version
   ```
   Ожидаем `{"version":"1.0.0","commit":"<sha>","env_version":"1.0.0"}`
-- [ ] Через Ingress (нужен `minikube tunnel`):
+- [ ] Через Ingress после локального `02-deploy.sh` (нужен `minikube tunnel`):
   ```bash
-  curl http://hw8.local/version
+  curl --resolve hw8.local:80:127.0.0.1 http://hw8.local/version
   ```
+  После CI-деплоя Ingress отключён; для браузера использовать port-forward
+  из быстрой шпаргалки выше.
 - [ ] Показать `APP_VERSION` в логах при старте:
   ```bash
   kubectl logs deployment/hw8-app -n k8s-hw8 | head
@@ -223,7 +333,9 @@ gh variable list               # ожидаем HW8_RUNNER=hw8-minikube
   gh variable list
   ```
   `HW8_RUNNER=hw8-minikube`, а в workflow — `runs-on: ${{ vars.HW8_RUNNER || 'ubuntu-latest' }}`
-- [ ] Объяснить fallback: без него джоба висела бы в очереди, когда minikube выключен
+- [ ] Объяснить fallback: `ubuntu-latest` выбирается, только если `HW8_RUNNER`
+      не задана. Если переменная задана, а minikube выключен, джоба ждёт раннер
+      в очереди.
 
 ### 13. Пайплайн запущен на подключенном раннере
 
@@ -265,44 +377,6 @@ gh variable list               # ожидаем HW8_RUNNER=hw8-minikube
 
 ---
 
-## Шпаргалка
+## Команды для быстрого показа
 
-```bash
-# Пайплайн
-gh run list --workflow hw8-release.yml
-gh run view <id>
-gh run watch
-
-# Теги и релизы
-git fetch --tags && git tag -l
-gh release list
-gh release view v1.0.0
-
-# Образ в GHCR
-gh api /users/fastrapier/packages/container/hw8/versions \
-  --jq '.[].metadata.container.tags'
-
-# Задеплоенный тег
-kubectl get deployment hw8-app -n k8s-hw8 \
-  -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
-kubectl run curl-hw8 --rm -it --restart=Never -n k8s-hw8 \
-  --image=curlimages/curl -- curl -s http://hw8-app/version
-
-# Деплой другого тега
-cd hw-8 && ./scripts/02-deploy.sh 1.0.0
-
-# Свой раннер
-kubectl get pods -n arc-systems
-kubectl get pods -n arc-runners
-kubectl get autoscalingrunnersets -n arc-runners
-gh api repos/fastrapier/k8s-hw/actions/runners \
-  --jq '.runners[] | "\(.name) \(.status)"'
-gh variable list
-
-# Прогон деплоя на своём раннере, без нового релиза
-gh workflow run hw8-release.yml -f tag=1.0.0
-gh run watch
-
-# Очистить всё
-./teardown.sh
-```
+См. [шпаргалку в начале файла](#быстрая-шпаргалка-для-экзамена).
