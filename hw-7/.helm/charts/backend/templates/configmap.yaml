@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+  labels: {{ include "backend.labels" . | nindent 4 }}
+data:
+  {{- range $key, $val := .Values.env }}
+  {{ $key }}: {{ $val | quote }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: api-credentials
+  labels: {{ include "backend.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  username: {{ .Values.secret.username | quote }}
+  password: {{ .Values.secret.password | quote }}

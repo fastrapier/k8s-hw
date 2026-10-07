@@ -1,0 +1,290 @@
+name: hw8 release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'hw-8/**'
+      - '.github/workflows/hw8-release.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'hw-8/**'
+      - '.github/workflows/hw8-release.yml'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: >-
+          Уже опубликованный тег образа (например 1.0.0). Если задан, release и
+          build пропускаются, а deploy разворачивает этот тег — так пайплайн
+          можно прогнать на self-hosted раннере, не создавая новый релиз.
+        required: false
+        type: string
+        default: ''
+
+concurrency:
+  group: hw8-release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/hw8
+
+jobs:
+  release:
+    name: Сборка тега (semantic-release)
+    # При ручном запуске с готовым тегом версию считать не нужно.
+    if: inputs.tag == ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    outputs:
+      version: ${{ steps.out.outputs.version }}
+      released: ${{ steps.out.outputs.released }}
+    steps:
+      # fetch-depth: 0 — semantic-release читает всю историю и теги.
+      # ref: head_ref нужен, чтобы на pull_request HEAD был на реальной ветке,
+      # а не на detached merge-коммите (иначе dry-run не определит ветку).
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: hw-8/package-lock.json
+
+      - name: Установка зависимостей
+        working-directory: hw-8
+        run: npm ci --no-audit --no-fund
+
+      - name: semantic-release
+        working-directory: hw-8
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          rm -f .version
+          if [ "$EVENT_NAME" = "push" ] && [ "$GIT_REF" = "refs/heads/main" ]; then
+            echo "::notice::Реальный релиз: тег и GitHub Release будут созданы"
+            npx semantic-release
+          else
+            echo "::notice::Dry-run для ветки $BRANCH: версия только вычисляется"
+            # env-ci берёт имя ветки из GITHUB_REF, а на pull_request это
+            # refs/pull/N/merge — такая ветка не совпадает ни с одной релизной,
+            # и semantic-release выходит, не посчитав версию. Гасим признаки CI:
+            # тогда ветка определяется по git HEAD, который checkout поставил
+            # на $BRANCH, и --branches "$BRANCH" с ней совпадает.
+            CI= GITHUB_ACTIONS= GITHUB_REF= \
+              npx semantic-release --dry-run --no-ci --branches "$BRANCH"
+          fi
+
+      - name: Версия релиза
+        id: out
+        working-directory: hw-8
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+        run: |
+          if [ -s .version ]; then
+            version=$(cat .version)
+          else
+            version=""
+          fi
+
+          released=false
+          if [ -n "$version" ] && [ "$EVENT_NAME" = "push" ] && [ "$GIT_REF" = "refs/heads/main" ]; then
+            released=true
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "released=$released" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$version" ]; then
+            echo "### Версия: \`$version\` (released=$released)" >> "$GITHUB_STEP_SUMMARY"
+            echo "Тег: \`v$version\`, образ: \`${IMAGE}:$version\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Релиз не требуется: нет коммитов, влияющих на версию" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  build:
+    name: Сборка и push docker-образа
+    needs: release
+    if: inputs.tag == ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Логин в ghcr.io
+        if: needs.release.outputs.released == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # На pull_request тег ещё не создан: собираем образ как проверку
+      # сборки и версионируем меткой pr-<номер>, но не пушим.
+      - name: Тег образа
+        id: tag
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          RELEASED: ${{ needs.release.outputs.released }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "$RELEASED" = "true" ]; then
+            echo "tags=${IMAGE}:${VERSION},${IMAGE}:latest" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          else
+            version="${VERSION:-0.0.0}-pr${PR_NUMBER:-0}"
+            echo "tags=${IMAGE}:${version}" >> "$GITHUB_OUTPUT"
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+            echo "push=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build & push
+        uses: docker/build-push-action@v7
+        with:
+          context: hw-8
+          file: hw-8/docker/app.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ steps.tag.outputs.push == 'true' }}
+          tags: ${{ steps.tag.outputs.tags }}
+          build-args: |
+            VERSION=${{ steps.tag.outputs.version }}
+            COMMIT=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Итог
+        env:
+          TAGS: ${{ steps.tag.outputs.tags }}
+          PUSHED: ${{ steps.tag.outputs.push }}
+        run: |
+          echo "### Образ" >> "$GITHUB_STEP_SUMMARY"
+          echo "- теги: \`$TAGS\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- запушен в GHCR: \`$PUSHED\`" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Деплой в Kubernetes по тегу
+    needs: [release, build]
+    # При ручном запуске с готовым тегом release и build пропущены, а джоба со
+    # skipped-предшественниками сама уходит в skipped — поэтому нужен
+    # !cancelled(). Результаты предшественников тогда проверяются явно, иначе
+    # деплой поехал бы и после падения build.
+    if: |
+      !cancelled() && (
+        inputs.tag != '' || (
+          needs.release.result == 'success' &&
+          needs.build.result == 'success' &&
+          needs.release.outputs.released == 'true'
+        )
+      )
+    # Раннер выбирает repo variable HW8_RUNNER: её ставит
+    # hw-8/scripts/03-deploy-runner.sh при разворачивании self-hosted раннера.
+    # Fallback обязателен — без него джоба висела бы в очереди до таймаута
+    # GitHub каждый раз, когда minikube с раннером выключен.
+    runs-on: ${{ vars.HW8_RUNNER || 'ubuntu-latest' }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Где выполняется джоба
+        env:
+          RUNS_ON_LABEL: ${{ vars.HW8_RUNNER || 'ubuntu-latest' }}
+          RUNNER_NAME_CTX: ${{ runner.name }}
+        run: |
+          {
+            echo "### Раннер"
+            echo "- \`runs-on\`: \`$RUNS_ON_LABEL\`"
+            echo "- \`runner.name\`: \`$RUNNER_NAME_CTX\`"
+            echo "- \`RUNNER_ENVIRONMENT\`: \`${RUNNER_ENVIRONMENT:-не задан}\`"
+            echo "- hostname: \`$(hostname)\`"
+            if [ -n "${KUBERNETES_SERVICE_HOST:-}" ]; then
+              echo "- внутри кластера: да, API \`$KUBERNETES_SERVICE_HOST\`"
+            else
+              echo "- внутри кластера: нет"
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: azure/setup-helm@v5
+        with:
+          version: v3.16.3
+
+      - uses: azure/setup-kubectl@v5
+
+      - name: Kubeconfig
+        id: kube
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG }}
+        run: |
+          # Под раннера в кластере: kubectl и helm сами возьмут in-cluster
+          # конфиг из токена ServiceAccount, если kubeconfig'а нет.
+          if [ -n "${KUBERNETES_SERVICE_HOST:-}" ]; then
+            echo "::notice::Раннер работает внутри кластера — используется ServiceAccount hw8-runner-deployer"
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -z "$KUBECONFIG_B64" ]; then
+            echo "::warning::Раннер вне кластера и секрет KUBECONFIG не задан — деплой пропущен. Поднимите self-hosted раннер: hw-8/scripts/03-deploy-runner.sh"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          mkdir -p "$HOME/.kube"
+          printf '%s' "$KUBECONFIG_B64" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: helm upgrade --install
+        if: steps.kube.outputs.ready == 'true'
+        env:
+          VERSION: ${{ inputs.tag || needs.release.outputs.version }}
+        run: |
+          # Тот же чарт и тот же способ передачи тега, что у scripts/02-deploy.sh.
+          # Секрет для приватного пакета в GHCR кладёт в namespace тот же
+          # скрипт, поэтому здесь он опциональный.
+          PULL_SECRET_ARGS=()
+          if kubectl get secret ghcr-pull-secret -n k8s-hw8 >/dev/null 2>&1; then
+            PULL_SECRET_ARGS=(--set "imagePullSecrets[0].name=ghcr-pull-secret")
+          fi
+
+          helm upgrade --install hw8-app hw-8/helm/app \
+            --namespace k8s-hw8 \
+            --create-namespace \
+            --set "image.repository=${IMAGE}" \
+            --set "image.tag=${VERSION}" \
+            "${PULL_SECRET_ARGS[@]}" \
+            --wait --timeout=5m
+
+          kubectl rollout status deployment/hw8-app -n k8s-hw8 --timeout=300s
+          kubectl get pods -n k8s-hw8 -o wide
+
+      - name: Итог
+        env:
+          VERSION: ${{ inputs.tag || needs.release.outputs.version }}
+          READY: ${{ steps.kube.outputs.ready }}
+        run: |
+          echo "### Деплой" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$READY" = "true" ]; then
+            echo "Релиз \`hw8-app\` обновлён до \`${IMAGE}:${VERSION}\` в namespace \`k8s-hw8\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Пропущен: раннер вне кластера и нет секрета \`KUBECONFIG\`" >> "$GITHUB_STEP_SUMMARY"
+          fi
