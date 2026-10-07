@@ -260,9 +260,9 @@ Fallback на `ubuntu-latest` действует только при пусто�
 
 ### Quality Gate — `continue-on-error`
 
-На коде четырёх сданных ДЗ Quality Gate почти наверняка `FAILED`. Задача ДЗ —
-настроить анализ и видеть результат, а не привести задним числом всё
-к чистому листу. Статус виден в логе джобы и в UI.
+Шаг Quality Gate отмечен `continue-on-error`: его отрицательный результат
+не блокирует учебный пайплайн, но виден в логе и UI. В проверенном прогоне
+7 октября результат — `PASSED`, без использования этого послабления.
 
 ## Проверка стенда 7 октября 2026
 
@@ -280,6 +280,17 @@ Fallback на `ubuntu-latest` действует только при пусто�
 - `go build ./...`, `go vet ./...` и `go test ./...` прошли во всех четырёх
   обновлённых модулях. Интеграция обновлённых библиотек с живыми PostgreSQL
   и RabbitMQ пока не проверялась; образы в кластере не пересобирались.
+- SonarQube Community Build 26.7.0.124771 поднят в `k8s-hw10`, проект
+  `k8s-hw` создан, пароль и токен сохранены в Keychain. Секреты
+  `SONAR_TOKEN` и `SONAR_HOST_URL` настроены в GitHub Actions.
+- [CI №37641184234](https://github.com/fastrapier/k8s-hw/actions/runs/37641184234)
+  на коммите `2555002`: TruffleHog, Trivy и SonarQube завершились успешно.
+  SARIF загружен в Code scanning. SonarScanner 8.1.0 выполнил анализ на
+  ARM ARC-раннере; Git blame обработал 122 файла за 745 мс. Импортировано
+  покрытие шести Go-модулей, `ANALYSIS SUCCESSFUL`, `EXECUTION SUCCESS`,
+  Quality Gate — `PASSED`. Отчёт в UI проверен вручную.
+- Для ARC в workflow добавлена установка `dirmngr` для проверки подписи
+  SonarScanner и UTF-8 locale для кириллических имён файлов.
 
 Предупреждения `Skipping chart` означают, что часть Helm-чартов не была
 проверена на misconfig: для их рендера нужны werf-значения, тег образа или

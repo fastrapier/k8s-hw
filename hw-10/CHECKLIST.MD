@@ -1,5 +1,35 @@
 # Чеклист для защиты ДЗ 10
 
+## Короткий показ на экзамене
+
+Проверенный прогон: [GitHub Actions №37641184234](https://github.com/fastrapier/k8s-hw/actions/runs/37641184234).
+Все три джобы прошли; SonarQube выполнил анализ, Quality Gate — `PASSED`.
+
+```bash
+cd /Users/notwork/dopki/k8s-hw/hw-10
+export MINIKUBE_PROFILE=k8s-exam
+pre-commit run --all-files
+./scripts/06-trufflehog-local.sh
+./scripts/05-trivy-local.sh
+
+# Повторить CI после слияния в main; кластер и ARC должны работать
+gh workflow run hw10-security.yml --ref main --repo fastrapier/k8s-hw
+gh run watch --repo fastrapier/k8s-hw
+
+# Отдельный терминал: держать port-forward для UI
+kubectl --context=k8s-exam port-forward -n k8s-hw10 svc/sonarqube-sonarqube 9000:9000
+```
+
+Открыть http://127.0.0.1:9000/dashboard?id=k8s-hw. Логин `admin`, пароль:
+
+```bash
+security find-generic-password -a fastrapier -s sonarqube-hw10 -w
+```
+
+В UI показать Quality Gate, замечания, покрытие и дублирование кода.
+Локальный скан не требуется. Успешный Quality Gate не означает отсутствие
+замечаний или уязвимостей: он оценивает настроенные условия качества.
+
 ## Подготовка
 
 Команды ниже выполняются из `hw-10/`. Кластер и ARC-раннер из ДЗ 8
