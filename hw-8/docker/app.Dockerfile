@@ -1,14 +1,16 @@
-FROM golang:1.26-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 
 ARG VERSION=dev
 ARG COMMIT=none
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /app
 COPY go.mod ./
 RUN go mod download
 COPY cmd ./cmd
 
-RUN CGO_ENABLED=0 go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
       -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" \
       -o /out/app ./cmd/app
 

@@ -7,6 +7,11 @@
 джоба `deploy` уезжает на него и деплоит изнутри кластера —
 **[Часть 2 — свой раннер](#часть-2--свой-раннер)**.
 
+Образ приложения в CI собирается для `linux/amd64` и `linux/arm64`, чтобы один
+тег работал и на GitHub-hosted окружении, и в minikube на Apple Silicon.
+Go компилируется для целевой архитектуры на платформе сборщика; QEMU используется
+для команд финального Alpine-слоя при сборке ARM-образа на AMD64-раннере.
+
 ## Архитектура пайплайна
 
 ```
@@ -385,8 +390,9 @@ cd hw-8
 4. применяет `arc/deployer-rbac.yaml` — SA раннера и права на `k8s-hw8`;
 5. `helm upgrade --install hw8-minikube oci://…/gha-runner-scale-set --version 0.14.2 -n arc-runners -f arc/runner-values.yaml --wait`;
 6. ждёт, пока поднимется под раннера (helm `--wait` ждёт только CR, listener и
-   под создаёт уже контроллер), и проверяет регистрацию через
-   `gh api repos/fastrapier/k8s-hw/actions/runners`;
+   под создаёт уже контроллер), проверяет Ready пода и статус `online` через
+   `gh api repos/fastrapier/k8s-hw/actions/runners`; ожидание — до 600 секунд,
+   его можно изменить переменной `ARC_READY_TIMEOUT`;
 7. включает раннер в пайплайне: `gh variable set HW8_RUNNER --body hw8-minikube`.
 
 Версия чартов запинена в `scripts/common.sh` (`ARC_CHART_VERSION`): чарт и образ
@@ -464,6 +470,13 @@ values плюс эту переменную.
 опциональный input `tag`. Если он задан, `release` и `build` пропускаются, а
 `deploy` разворачивает уже опубликованный образ:
 
+Ручной запуск доступен после появления workflow в основной ветке `main`
+([требование GitHub](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)).
+Для этих PR порядок слияния — сначала часть 2 (#8) в `hw-8`, затем часть 1 (#7)
+в `main`: в основную ветку попадёт весь пайплайн с раннером и сборкой для обеих
+архитектур. Push в `main` запускает создание релиза, публикацию образа и деплой.
+В примере ниже `1.0.0` должен быть существующим тегом образа в GHCR.
+
 ```bash
 gh workflow run hw8-release.yml -f tag=1.0.0
 gh run watch
@@ -537,6 +550,17 @@ helm template hw8-minikube oci://ghcr.io/actions/actions-runner-controller-chart
 
 ### Грабли
 
+- **Listener падает с `ephemeralrunnersets … not found`, подов раннеров нет.**
+  В ARC 0.14.2 возможна ссылка на уже удалённый EphemeralRunnerSet
+  ([issue #4561](https://github.com/actions/actions-runner-controller/issues/4561)).
+  Скрипт выявляет отсутствующий набор и печатает команду удаления конкретного
+  `AutoscalingListener`. Контроллер пересоздаёт его; затем повторите
+  `./scripts/03-deploy-runner.sh`. Проверяйте новую ссылку через
+  `kubectl get autoscalinglisteners -n arc-systems -o yaml`.
+- **Раннер долго в `ContainerCreating`.** Проверьте события:
+  `kubectl get events -n arc-runners --sort-by=.lastTimestamp`.
+  Первый запуск скачивает образ раннера; `Pulling` без ошибок означает,
+  что Kubernetes ещё загружает образ.
 - **`helm pull` из ghcr.io отдаёт `403 denied`.** Виноват не чарт: helm берёт
   креды из `~/.docker/config.json`, и если там `credsStore` указывает на
   неработающий helper (например, Docker Desktop не запущен), запрос уходит с
