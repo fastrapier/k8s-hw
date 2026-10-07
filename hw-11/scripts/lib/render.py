@@ -15,7 +15,7 @@ def _load():
         return json.load(sys.stdin)
     except json.JSONDecodeError as exc:
         print(f"  не удалось разобрать ответ как JSON: {exc}")
-        sys.exit(0)
+        sys.exit(1)
 
 
 def prom_targets():
@@ -28,22 +28,26 @@ def prom_targets():
     if not found:
         print("  таргет ingress-metrics не найден среди активных")
         print(f"  всего активных таргетов: {len(data)}")
-        return
+        sys.exit(1)
     for t in found:
         labels = t.get("labels", {})
         print(f"  job={labels.get('job')} health={t.get('health')} url={t.get('scrapeUrl')}")
         if t.get("lastError"):
             print(f"    lastError: {t['lastError']}")
+    if not any(t.get("health") == "up" for t in found):
+        sys.exit(1)
 
 
 def prom_query():
     r = _load()
     if r.get("status") != "success":
         print(f"  ОШИБКА: {r.get('error')}")
-        return
+        sys.exit(1)
     result = r.get("data", {}).get("result", [])
     if not result:
         print("  пусто — метрика ещё не собрана, подождите один интервал скрейпа (30s)")
+        if len(sys.argv) > 2 and sys.argv[2] == "required":
+            sys.exit(1)
         return
     for s in result[:10]:
         metric = s.get("metric", {})
@@ -107,6 +111,20 @@ def grafana_contact_points():
         print(f"  {c.get('name')}: uid={c.get('uid')} type={c.get('type')} addresses={settings.get('addresses')}")
 
 
+def grafana_firing():
+    groups = _load().get("data", {}).get("groups", [])
+    for group in groups:
+        for rule in group.get("rules", []):
+            uid = rule.get("uid") or rule.get("grafana_alert", {}).get("uid")
+            matches = uid == "hw11-ingress-rps" or (
+                rule.get("name") == "Ingress: RPS выше 1 запроса в секунду"
+                and str(rule.get("labels", {}).get("hw")) == "11"
+            )
+            if matches and rule.get("state") == "firing":
+                return
+    sys.exit(1)
+
+
 def grafana_test_body():
     """Тело запроса для POST /api/alertmanager/grafana/config/api/v1/receivers/test.
 
@@ -145,6 +163,7 @@ MODES = {
     "loki-labels": loki_labels,
     "loki-query": loki_query,
     "grafana-rules": grafana_rules,
+    "grafana-firing": grafana_firing,
     "grafana-contact-points": grafana_contact_points,
     "grafana-test-body": grafana_test_body,
 }

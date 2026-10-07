@@ -14,9 +14,11 @@ echo "[INFO] Релизы: kube-prometheus-stack, ingress-metrics, loki, promtai
 helmfile -f "$HELMFILE" apply --skip-diff-on-install --suppress-secrets
 
 echo "=== Ожидание готовности подов ==="
-kubectl wait --for=condition=Ready pod --all -n "$NAMESPACE" --timeout=600s || {
-  echo "[WARN] Не все поды готовы, текущее состояние:"
+kubectl wait --for=condition=Ready pod --all -n "$NAMESPACE" \
+  --field-selector=status.phase!=Succeeded --timeout=600s || {
+  echo "[ERROR] Не все поды готовы, текущее состояние:"
   kubectl get pods -n "$NAMESPACE"
+  exit 1
 }
 
 echo "=== Записи в /etc/hosts ==="

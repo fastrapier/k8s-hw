@@ -95,17 +95,35 @@ hw-11/
 
 ## Быстрый старт
 
+Для проверки в профиле `k8s-exam` без отправки писем:
+
 ```bash
-minikube start
-minikube tunnel                 # отдельный терминал, нужен для *.local
-
-# один раз: секреты в Keychain (см. «Секреты и env»)
-security add-generic-password -a fastrapier -s grafana-hw11 -w 'ваш-пароль' -U
-security add-generic-password -a fastrapier -s smtp-hw11 -w 'ваш-smtp-токен' -U
-cp hw-11/.env.example hw-11/.env && $EDITOR hw-11/.env   # GRAFANA_SMTP_USER и т.п.
-
-cd hw-11 && ./init.sh           # ~10 минут
+export MINIKUBE_PROFILE=k8s-exam
+export GRAFANA_SMTP_ENABLED=false
+cd hw-11
+./scripts/01-helmfile-init.sh
+./scripts/02-deploy.sh
+./scripts/03-check-metrics.sh
+./scripts/04-check-logs.sh
+./scripts/05-test-alert.sh
 ```
+
+В отдельном терминале должен работать `minikube tunnel -p k8s-exam`.
+Пароль Grafana при первом запуске создаётся в Keychain (`grafana-hw11`), затем
+переиспользуется. `.env` для этого режима не нужен; если он существует,
+`GRAFANA_SMTP_ENABLED=false` задайте в нём, поскольку файл имеет приоритет над окружением.
+
+SMTP по умолчанию выключен. Правила вычисляются, а уведомления с меткой `hw=11`
+заглушены круглосуточным mute timing `hw11-no-email` в дочерней политике.
+`05-test-alert.sh` пропускает тест письма и требует состояние `firing` у правила RPS.
+Это проверка метрик и алертинга; отправка письма из задания остаётся непроверенной.
+[Механизм mute timings Grafana](https://grafana.com/docs/grafana/latest/alerting/configure-notifications/mute-timings/)
+сохраняет вычисление правил.
+
+Для полной SMTP-проверки: скопируйте `.env.example` в `.env`, задайте
+`GRAFANA_SMTP_ENABLED=true`, SMTP-логин и адрес получателя, сохраните пароль
+приложения в Keychain `smtp-hw11`, затем повторите `02-deploy.sh` и `05-test-alert.sh`.
+Полный запуск всех шагов: `./init.sh`.
 
 ## Доступ к UI
 
@@ -375,9 +393,10 @@ security add-generic-password -a fastrapier -s smtp-hw11 -w 'полученны�
 
 | Переменная | Обязательна | Откуда | По умолчанию |
 |---|---|---|---|
-| `GRAFANA_ADMIN_PASSWORD` | да | Keychain `grafana-hw11` или `.env` | — |
-| `GRAFANA_SMTP_PASSWORD` | да | Keychain `smtp-hw11` или `.env` | — |
-| `GRAFANA_SMTP_USER` | да | `.env` | — |
+| `GRAFANA_ADMIN_PASSWORD` | да | Keychain `grafana-hw11` или `.env` | генерируется скриптом |
+| `GRAFANA_SMTP_ENABLED` | нет | `.env` или окружение | `false` |
+| `GRAFANA_SMTP_PASSWORD` | при SMTP=true | Keychain `smtp-hw11` или `.env` | — |
+| `GRAFANA_SMTP_USER` | при SMTP=true | `.env` | — |
 | `GRAFANA_SMTP_HOST` | нет | `.env` | `smtp.gmail.com:587` |
 | `GRAFANA_SMTP_FROM_ADDRESS` | нет | `.env` | `= GRAFANA_SMTP_USER` |
 | `ALERT_EMAIL` | нет | `.env` | `= GRAFANA_SMTP_USER` |
@@ -402,7 +421,7 @@ ConfigMap `grafana` рядом с остальным конфигом.
 
 ## Алертинг
 
-Контакт, политика маршрутизации и правила описаны в секции `alerting:` values Grafana и
+При `GRAFANA_SMTP_ENABLED=true` контакт, политика маршрутизации и правила описаны в секции `alerting:` values Grafana и
 приезжают файлами в `/etc/grafana/provisioning/alerting/`.
 
 **Contact point** `email-hw11` — тип `email`, адрес из `$ALERT_EMAIL`, `singleEmail: true`

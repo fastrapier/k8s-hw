@@ -1,15 +1,40 @@
 # Чеклист для защиты ДЗ 11
 
+## Ручной прогон без писем (выбранный режим)
+
+```bash
+export MINIKUBE_PROFILE=k8s-exam
+export GRAFANA_SMTP_ENABLED=false
+cd hw-11
+./scripts/01-helmfile-init.sh
+./scripts/02-deploy.sh
+./scripts/03-check-metrics.sh
+./scripts/04-check-logs.sh
+./scripts/05-test-alert.sh
+```
+
+В отдельном терминале: `minikube tunnel -p k8s-exam`.
+Пароль Grafana создаётся в Keychain автоматически. Если есть `.env`, задайте
+`GRAFANA_SMTP_ENABLED=false` и в нём. Во время проверки алерта покажите в UI
+переход **Normal → Pending → Alerting**. Уведомления `hw=11` заглушены политикой
+`hw11-no-email`; тест отправки и получение письма пропускаются.
+
+Далее приведён полный план защиты, включая SMTP. Разделы 3.1, проверку SMTP Secret
+в 3.2, email-контакт в 3.4 и отправку письма в 3.5 выполняйте только в SMTP-режиме.
+Отправка письма без SMTP не проверена.
+
 ## Подготовка (до защиты)
 
 ```bash
+# полная проверка SMTP — включите GRAFANA_SMTP_ENABLED=true в .env
 # секреты — один раз
 security add-generic-password -a fastrapier -s grafana-hw11 -w 'пароль-админа' -U
 security add-generic-password -a fastrapier -s smtp-hw11    -w 'smtp-токен'    -U
 cp hw-11/.env.example hw-11/.env && $EDITOR hw-11/.env   # GRAFANA_SMTP_USER
 
-minikube start
-minikube tunnel          # отдельный терминал, не закрывать
+minikube start -p k8s-exam
+export MINIKUBE_PROFILE=k8s-exam
+minikube tunnel -p k8s-exam          # отдельный терминал, не закрывать
 cd hw-11 && ./init.sh    # ~10 минут
 ```
 
@@ -200,7 +225,7 @@ kubectl get pods -n k8s-hw11
       основной пароль по SMTP не работает
 - [ ] Показать, где он лежит (значение не показывать):
   ```bash
-  security find-generic-password -a fastrapier -s smtp-hw11 -w | head -c 4
+  security find-generic-password -a fastrapier -s smtp-hw11 >/dev/null
   ```
 - [ ] Показать `hw-11/.env.example` — какие переменные нужны, значений в репозитории нет
 - [ ] Показать `load_env()` в `hw-11/scripts/common.sh` — Keychain + `.env`, падение с
@@ -216,7 +241,7 @@ kubectl get pods -n k8s-hw11
   - дашборды по `gnetId` + sidecar для дашбордов кластера
 - [ ] **Показать, что SMTP-токен внутри кластера лежит в Secret, а не в ConfigMap**:
   ```bash
-  kubectl get secret grafana-env -n k8s-hw11 -o jsonpath='{.data}' | head -c 80; echo
+  kubectl describe secret grafana-env -n k8s-hw11
   kubectl get configmap grafana -n k8s-hw11 -o yaml | grep -A3 '\[smtp\]'
   ```
   В ConfigMap стоит `password = $__env{GF_SMTP_PASSWORD}` — подстановка из Secret

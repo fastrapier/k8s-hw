@@ -22,10 +22,10 @@ helm plugin list
 ensure_minikube
 
 echo "=== Addon ingress ==="
-if minikube addons list -o json 2>/dev/null | grep -A2 '"ingress"' | grep -q '"Status": *"enabled"'; then
+if minikube -p "$MINIKUBE_PROFILE" addons list -o json 2>/dev/null | grep -A2 '"ingress"' | grep -q '"Status": *"enabled"'; then
   echo "[INFO] addon ingress уже включён"
 else
-  minikube addons enable ingress
+  minikube -p "$MINIKUBE_PROFILE" addons enable ingress
 fi
 
 echo "[INFO] Ожидание готовности ingress-nginx..."
@@ -38,9 +38,11 @@ kubectl rollout status deployment/ingress-nginx-controller \
 if kubectl get deployment ingress-nginx-controller -n "$INGRESS_NAMESPACE" \
   -o jsonpath='{.spec.template.spec.containers[0].args}' 2>/dev/null | grep -q 'enable-metrics=false'; then
   echo "[WARN] У контроллера ingress-nginx метрики выключены (--enable-metrics=false)."
-  echo "       Убираю флаг, иначе на :10254 не будет /metrics"
+  echo "       Включаю метрики на :10254"
+  PATCH="$(kubectl get deployment ingress-nginx-controller -n "$INGRESS_NAMESPACE" -o json \
+    | jq -c '[{op: "replace", path: "/spec/template/spec/containers/0/args", value: (.spec.template.spec.containers[0].args | map(if . == "--enable-metrics=false" then "--enable-metrics=true" else . end))}]')"
   kubectl patch deployment ingress-nginx-controller -n "$INGRESS_NAMESPACE" --type=json \
-    -p='[{"op":"replace","path":"/spec/template/spec/containers/0/args/-","value":"--enable-metrics=true"}]'
+    -p="$PATCH"
   kubectl rollout status deployment/ingress-nginx-controller -n "$INGRESS_NAMESPACE" --timeout=300s
 else
   echo "[OK] Метрики ingress-nginx включены (порт 10254)"

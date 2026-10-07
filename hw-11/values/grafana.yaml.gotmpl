@@ -1,3 +1,4 @@
+{{- $smtpEnabled := eq (env "GRAFANA_SMTP_ENABLED" | default "false") "true" -}}
 adminUser: admin
 # Пароль приезжает из env (Keychain или hw-11/.env) и в git не попадает.
 adminPassword: {{ requiredEnv "GRAFANA_ADMIN_PASSWORD" | quote }}
@@ -92,13 +93,16 @@ dashboards:
 
 # SMTP-пароль (токен приложения) кладём в Secret, а не в grafana.ini-ConfigMap.
 # В самом grafana.ini подставляется через $__env{}.
+{{ if $smtpEnabled }}
 envRenderSecret:
   GF_SMTP_PASSWORD: {{ requiredEnv "GRAFANA_SMTP_PASSWORD" | quote }}
+{{ end }}
 
 grafana.ini:
   server:
     root_url: http://{{ .Values.hosts.grafana }}
   smtp:
+{{ if $smtpEnabled }}
     enabled: true
     host: {{ env "GRAFANA_SMTP_HOST" | default "smtp.gmail.com:587" | quote }}
     user: {{ requiredEnv "GRAFANA_SMTP_USER" | quote }}
@@ -106,6 +110,9 @@ grafana.ini:
     from_address: {{ env "GRAFANA_SMTP_FROM_ADDRESS" | default (requiredEnv "GRAFANA_SMTP_USER") | quote }}
     from_name: Grafana hw-11
     startTLS_policy: MandatoryStartTLS
+{{ else }}
+    enabled: false
+{{ end }}
   unified_alerting:
     enabled: true
   users:
@@ -114,6 +121,7 @@ grafana.ini:
 # Алертинг целиком описан здесь: контакт, политика маршрутизации и правила.
 # Provisioned-объекты в UI помечены read-only — это ожидаемо.
 alerting:
+{{ if $smtpEnabled }}
   contactpoints.yaml:
     apiVersion: 1
     contactPoints:
@@ -125,18 +133,37 @@ alerting:
             settings:
               addresses: {{ env "ALERT_EMAIL" | default (requiredEnv "GRAFANA_SMTP_USER") | quote }}
               singleEmail: true
+{{ else }}
+  mutetimes.yaml:
+    apiVersion: 1
+    muteTimes:
+      - orgId: 1
+        name: hw11-no-email
+        time_intervals:
+          - times:
+              - start_time: '00:00'
+                end_time: '24:00'
+{{ end }}
 
   policies.yaml:
     apiVersion: 1
     policies:
       - orgId: 1
-        receiver: email-hw11
+        receiver: {{ if $smtpEnabled }}email-hw11{{ else }}grafana-default-email{{ end }}
         group_by:
           - grafana_folder
           - alertname
         group_wait: 30s
         group_interval: 1m
         repeat_interval: 1h
+{{ if not $smtpEnabled }}
+        routes:
+          - receiver: grafana-default-email
+            object_matchers:
+              - ['hw', '=', '11']
+            mute_time_intervals:
+              - hw11-no-email
+{{ end }}
 
   rules.yaml:
     apiVersion: 1
