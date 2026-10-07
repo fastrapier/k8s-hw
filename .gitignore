@@ -1,2 +1,7 @@
 .idea/
 .cursor/
+
+# Артефакты проверок безопасности (ДЗ 10)
+coverage.out
+.scannerwork/
+trivy-results.sarif

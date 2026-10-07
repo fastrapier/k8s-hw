@@ -1,0 +1,51 @@
+# Хуки pre-commit для всего репозитория (ДЗ 10).
+#
+# Файл ОБЯЗАН лежать в корне: pre-commit ищет конфиг только в корне репозитория
+# и работает с индексом целиком, а не с отдельной поддиректорией ДЗ.
+#
+# Установка: hw-10/scripts/01-precommit.sh (или вручную `pre-commit install`).
+
+default_install_hook_types: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # Форматирующие хуки ограничены тем, что заводит это ДЗ. Прогон по всему
+      # репозиторию правит 17 файлов в hw1-2 (лишние пустые строки в конце) —
+      # сданное ДЗ не переформатируем, иначе диff этого PR перестанет читаться.
+      - id: trailing-whitespace
+        files: &owned_paths '^(hw-10/|\.github/|\.pre-commit-config\.yaml|\.trivyignore\.yaml|sonar-project\.properties)'
+      - id: end-of-file-fixer
+        files: *owned_paths
+      # Дальше — хуки про безопасность и корректность: они работают по всему
+      # репозиторию, потому что ничего не переписывают, а только проверяют.
+      - id: check-merge-conflict
+      # Приватные ключи ловятся по телу файла, а не по имени,
+      # поэтому переименование id_rsa не помогает.
+      - id: detect-private-key
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        # helm-шаблоны — это Go-текст с {{ }}, а не YAML: парсер на них падает.
+        exclude: '(^|/)\.?helm/(.*/)?templates/.*\.ya?ml$'
+
+  # TruffleHog ставится системно (brew), а не через pre-commit: официальный
+  # способ из README проекта — repo: local + language: system.
+  - repo: local
+    hooks:
+      - id: trufflehog
+        name: TruffleHog - поиск секретов в диффе
+        description: Сканирует то, что уходит в коммит, и падает на найденном секрете.
+        entry: trufflehog
+        # Порядок важен: --since-commit и --results — флаги подкоманды git,
+        # до неё разбор аргументов их не принимает.
+        args:
+          - git
+          - file://.
+          - --since-commit
+          - HEAD
+          - --results=verified,unknown
+          - --fail
+          - --no-update
+        language: system
+        pass_filenames: false
