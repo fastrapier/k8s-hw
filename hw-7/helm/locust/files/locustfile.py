@@ -6,6 +6,8 @@ locust-operator через ConfigMap (Helm .Files.Get не умеет читат
 скрипты hw-7/scripts/05-locust-local.sh и 06-find-max-users.sh.
 """
 
+import os
+
 from locust import HttpUser, between, task
 
 
@@ -13,6 +15,11 @@ class ApiUser(HttpUser):
     # Пауза между запросами одного пользователя: без неё «100 пользователей»
     # означали бы 100 бесконечных циклов, а не 100 реальных клиентов.
     wait_time = between(1, 3)
+
+    def on_start(self):
+        host_header = os.getenv("LOCUST_HOST_HEADER")
+        if host_header:
+            self.client.headers["Host"] = host_header
 
     @task(5)
     def list_requests(self):

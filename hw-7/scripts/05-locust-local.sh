@@ -17,6 +17,7 @@ RESULTS_DIR="$PROJECT_ROOT/locust/results"
 
 ensure_locust
 
+prepare_locust_target
 url=$(resolve_api_url)
 check_api_reachable "$url"
 

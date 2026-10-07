@@ -44,7 +44,23 @@ ensure_minikube() {
     echo "[ERROR] Minikube не запущен. Запустите: minikube start"
     exit 1
   fi
-  kubectl config use-context minikube &>/dev/null
+
+  local profile
+  profile="${MINIKUBE_PROFILE:-$(minikube profile)}"
+  # Некоторые версии minikube помечают активный профиль как "* имя".
+  profile="${profile#\* }"
+  if kubectl config use-context "$profile" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if [ "$(kubectl config current-context 2>/dev/null)" = "minikube" ] &&
+     [ "$(kubectl config view --minify -o jsonpath='{.contexts[0].context.cluster}' 2>/dev/null)" = "$profile" ]; then
+    return 0
+  fi
+
+  echo "[ERROR] В kubeconfig нет контекста для профиля Minikube '$profile'." >&2
+  echo "        Проверьте KUBECONFIG и выполните: kubectl config use-context $profile" >&2
+  return 1
 }
 
 ensure_werf() {
@@ -152,11 +168,15 @@ wait_for_metrics() {
   return 1
 }
 
-# URL приложения для локального Locust.
-#
-# По умолчанию — Ingress: только он раскидывает запросы по всем подам API.
-# kubectl port-forward прибивает трафик к одному поду, и демонстрация HPA
-# теряет смысл (масштабируется Deployment, а грузится один под).
+# Локальный Locust ходит в Ingress через tunnel по IP: macOS может долго
+# разрешать *.local. Заголовок Host сохраняет маршрутизацию Ingress.
+prepare_locust_target() {
+  if [ -z "${LOCUST_TARGET:-}" ]; then
+    export LOCUST_TARGET="http://127.0.0.1"
+    export LOCUST_HOST_HEADER="$API_HOST"
+  fi
+}
+
 resolve_api_url() {
   if [ -n "${LOCUST_TARGET:-}" ]; then
     echo "$LOCUST_TARGET"
@@ -167,12 +187,18 @@ resolve_api_url() {
 
 check_api_reachable() {
   local url="$1"
-  if curl -fsS --max-time 5 "$url/healthz" >/dev/null 2>&1; then
+  local reachable=1
+  if [ -n "${LOCUST_HOST_HEADER:-}" ]; then
+    curl -fsS --max-time 5 -H "Host: $LOCUST_HOST_HEADER" "$url/healthz" >/dev/null 2>&1 && reachable=0
+  else
+    curl -fsS --max-time 5 "$url/healthz" >/dev/null 2>&1 && reachable=0
+  fi
+  if [ "$reachable" -eq 0 ]; then
     echo "[OK] $url отвечает"
     return 0
   fi
   echo "[ERROR] $url не отвечает на /healthz"
-  echo "  Проверьте: minikube tunnel запущен, $API_HOST есть в /etc/hosts,"
+  echo "  Проверьте: minikube tunnel запущен, Ingress $API_HOST доступен,"
   echo "  приложение задеплоено (./scripts/03-build-and-deploy.sh)."
   echo "  Либо укажите свой адрес: LOCUST_TARGET=http://127.0.0.1:8080 $0"
   return 1

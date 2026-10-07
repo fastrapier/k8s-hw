@@ -21,6 +21,7 @@ WATCH_AFTER="${WATCH_AFTER:-420}"
 ensure_minikube
 ensure_locust
 
+prepare_locust_target
 url=$(resolve_api_url)
 check_api_reachable "$url"
 

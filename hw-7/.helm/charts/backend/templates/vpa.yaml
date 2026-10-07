@@ -15,8 +15,6 @@ spec:
     containerPolicies:
       - containerName: api
         controlledResources: {{ toYaml .Values.vpa.controlledResources | nindent 10 }}
-        # RequestsAndLimits ломает соотношение request/limit, выставленное в части 1:
-        # VPA пересчитал бы limits пропорционально и «съел» бы запас на всплеск.
         controlledValues: {{ .Values.vpa.controlledValues }}
         minAllowed: {{ toYaml .Values.vpa.minAllowed | nindent 10 }}
         maxAllowed: {{ toYaml .Values.vpa.maxAllowed | nindent 10 }}

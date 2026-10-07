@@ -22,6 +22,7 @@ COOLDOWN="${COOLDOWN:-30}"
 
 ensure_locust
 
+prepare_locust_target
 url=$(resolve_api_url)
 check_api_reachable "$url"
 

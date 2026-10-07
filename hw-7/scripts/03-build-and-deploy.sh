@@ -10,10 +10,6 @@ ensure_werf
 ensure_ghcr_login
 ensure_namespace
 
-# werf с docker-server backend не умеет BuildKit, а Dockerfile-ы написаны
-# без его расширений — отключаем явно, чтобы сборка была предсказуемой.
-export DOCKER_BUILDKIT=0
-
 echo "=== ghcr.io imagePullSecret ==="
 create_ghcr_pull_secret
 
@@ -22,7 +18,9 @@ add_host "$API_HOST"
 
 echo "=== werf converge ==="
 cd "$PROJECT_ROOT"
-werf converge --dev \
+WERF_HELM_PLUGINS=$(mktemp -d)
+trap 'rmdir "$WERF_HELM_PLUGINS" 2>/dev/null || true' EXIT
+DOCKER_BUILDKIT=1 HELM_PLUGINS="$WERF_HELM_PLUGINS" werf converge --dev \
   --repo "$GHCR_REPO" \
   --namespace "$NAMESPACE"
 

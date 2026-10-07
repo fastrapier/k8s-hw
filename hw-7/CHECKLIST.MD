@@ -93,8 +93,8 @@ VPA должен «пожить» под нагрузкой хотя бы 15 м�
     ConfigMap части 4, и локальные прогоны.
 - [ ] Показать, что эндпоинты живые и отвечают из разных подов:
   ```bash
-  curl -i http://api-hw7.local/db/requests?limit=3 | grep -i x-pod-name
-  curl -s "http://api-hw7.local/db/report?rows=100" | jq
+  curl --resolve api-hw7.local:80:127.0.0.1 -i 'http://api-hw7.local/db/requests?limit=3' | grep -i x-pod-name
+  curl --resolve api-hw7.local:80:127.0.0.1 -s 'http://api-hw7.local/db/report?rows=100' | jq
   ```
 
 ### 2.3 Настройки Locust
@@ -150,11 +150,16 @@ VPA должен «пожить» под нагрузкой хотя бы 15 м�
   ```bash
   kubectl get hpa api -n k8s-hw7 -w
   ```
-- [ ] Запустить:
+- [x] Проверенные прогоны: 1200 пользователей в кластере, 0 ошибок,
+      p95 2 мс. HPA увеличил API с 2 до 3, затем до 4 реплик во втором
+      прогоне; после обоих прогонов вернул к 2.
+      Для повтора из каталога `hw-7`:
   ```bash
-  USERS=200 RUN_TIME=5m ./scripts/07-hpa-demo.sh
+  kubectl delete locusttest load-test-v2 -n k8s-hw7
+  helm upgrade --install locust ./helm/locust -n k8s-hw7 \
+    --set load.users=1200 --set load.spawnRate=40 --set load.runTime=2m
   ```
-- [ ] Показать рост числа подов (2 → 4–6):
+- [ ] Показать рост числа pod'ов (в проверенных прогонах 2 → 3 и 2 → 4):
   ```bash
   kubectl get pods -n k8s-hw7 -l app.kubernetes.io/name=api
   ```
@@ -163,8 +168,8 @@ VPA должен «пожить» под нагрузкой хотя бы 15 м�
   kubectl describe hpa api -n k8s-hw7 | sed -n '/Events:/,$p'
   ```
 - [ ] После окна стабилизации (~5 минут после снятия нагрузки) показать
-      возврат к 2 репликам — скрипт печатает моменты изменения числа подов
-      из своего лога (`locust/results/hpa-demo-*.log`).
+      возврат к 2 репликам в выводе `kubectl get hpa api -n k8s-hw7 -w`
+      или в событиях `SuccessfulRescale`.
 
 ### 3.3 VPA установлен и настроен
 

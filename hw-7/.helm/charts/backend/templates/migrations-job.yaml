@@ -3,7 +3,11 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: api-migrations
-  labels: {{ include "backend.labels" . | nindent 4 }}
+  labels:
+    app.kubernetes.io/name: api-migrations
+    app.kubernetes.io/component: migrations
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
   annotations:
     # post-* потому что на первой установке Postgres поднимается тем же релизом;
     # before-hook-creation — потому что spec Job-а иммутабелен и повторный
@@ -15,7 +19,11 @@ spec:
   backoffLimit: {{ .Values.migrations.backoffLimit }}
   template:
     metadata:
-      labels: {{ include "backend.labels" . | nindent 8 }}
+      labels:
+        app.kubernetes.io/name: api-migrations
+        app.kubernetes.io/component: migrations
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
     spec:
       restartPolicy: OnFailure
       imagePullSecrets:

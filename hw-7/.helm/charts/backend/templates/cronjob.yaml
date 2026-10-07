@@ -3,7 +3,11 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: api-cron
-  labels: {{ include "backend.labels" . | nindent 4 }}
+  labels:
+    app.kubernetes.io/name: api-cron
+    app.kubernetes.io/component: cron
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
 spec:
   schedule: {{ .Values.cron.schedule | quote }}
   successfulJobsHistoryLimit: 3
@@ -14,7 +18,11 @@ spec:
       backoffLimit: 2
       template:
         metadata:
-          labels: {{ include "backend.labels" . | nindent 12 }}
+          labels:
+            app.kubernetes.io/name: api-cron
+            app.kubernetes.io/component: cron
+            app.kubernetes.io/instance: {{ .Release.Name }}
+            app.kubernetes.io/managed-by: {{ .Release.Service }}
         spec:
           restartPolicy: OnFailure
           imagePullSecrets:

@@ -8,10 +8,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scripts"
 
 sudo -v
 
-"$SCRIPT_DIR/01-metrics-server.sh"
-"$SCRIPT_DIR/02-install-vpa.sh"
-"$SCRIPT_DIR/03-build-and-deploy.sh"
-"$SCRIPT_DIR/08-locust-operator.sh"
+run_step() {
+  local script="$1"
+  echo "=== $(basename "$script") ==="
+  "$script" || {
+    local status=$?
+    echo "[ERROR] $(basename "$script") завершился с кодом $status" >&2
+    return "$status"
+  }
+}
+
+run_step "$SCRIPT_DIR/01-metrics-server.sh"
+run_step "$SCRIPT_DIR/02-install-vpa.sh"
+run_step "$SCRIPT_DIR/03-build-and-deploy.sh"
+run_step "$SCRIPT_DIR/08-locust-operator.sh"
 
 echo ""
 echo "[OK] Всё готово"
