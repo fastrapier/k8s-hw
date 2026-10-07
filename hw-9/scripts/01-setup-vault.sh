@@ -8,9 +8,9 @@ source "$SCRIPT_DIR/common.sh"
 ensure_minikube
 
 echo "=== Minikube addons ==="
-minikube addons enable ingress
-minikube addons enable default-storageclass
-minikube addons enable storage-provisioner
+minikube -p "$MINIKUBE_PROFILE" addons enable ingress
+minikube -p "$MINIKUBE_PROFILE" addons enable default-storageclass
+minikube -p "$MINIKUBE_PROFILE" addons enable storage-provisioner
 
 echo "=== Vault Helm ==="
 add_helm_repo hashicorp https://helm.releases.hashicorp.com

@@ -3,9 +3,7 @@ FROM alpine:3.23
 
 ARG MIGRATE_VERSION=v4.17.0
 
-# Архитектура определяется внутри образа, а не через ARG TARGETARCH: сборка идёт
-# классическим билдером (DOCKER_BUILDKIT=0), который TARGETARCH не подставляет,
-# а minikube на Apple Silicon — arm64, и amd64-бинарь там не запустится.
+# Бинарник migrate должен соответствовать архитектуре базового образа.
 RUN apk add --no-cache curl ca-certificates bash && \
     case "$(apk --print-arch)" in \
       x86_64)  MARCH=amd64 ;; \

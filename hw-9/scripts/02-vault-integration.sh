@@ -17,15 +17,22 @@ ensure_vals
 
 RENDERED_VALUES="$PROJECT_ROOT/secret-values.rendered.yaml"
 DOCKER_CONFIG_DIR=""
+WERF_HELM_PLUGINS=""
 
 cleanup() {
   rm -f "$RENDERED_VALUES"
   if [ -n "$DOCKER_CONFIG_DIR" ]; then
     rm -rf "$DOCKER_CONFIG_DIR"
   fi
+  if [ -n "$WERF_HELM_PLUGINS" ]; then
+    rmdir "$WERF_HELM_PLUGINS" 2>/dev/null || true
+  fi
   vault_login_cleanup
 }
 trap cleanup EXIT
+
+WERF_HELM_PLUGINS="$(mktemp -d)"
+export HELM_PLUGINS="$WERF_HELM_PLUGINS"
 
 if ! kubectl get pod "$VAULT_POD" -n "$NAMESPACE" &>/dev/null; then
   echo "[ERROR] Vault не найден в namespace $NAMESPACE. Запустите scripts/01-setup-vault.sh"
@@ -76,7 +83,7 @@ echo "[OK] Секреты получены из Vault, ключи:"
 grep -E '^\s+[a-z]+:' "$RENDERED_VALUES" | sed 's/:.*/: ***/' | sed 's/^/      /'
 
 echo "=== 4/4 werf converge ==="
-export DOCKER_BUILDKIT=0
+export DOCKER_BUILDKIT=1
 cd "$PROJECT_ROOT"
 
 werf converge --dev \
