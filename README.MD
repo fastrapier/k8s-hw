@@ -16,6 +16,7 @@ https://t.me/imperial_dan
 | 4 | Redis + кэширование | [hw-4/](hw-4/) | Redis, RedisInsight, CacheManager с TTL, кэширование API-запросов |
 | 7 | Масштабирование | [hw-7/](hw-7/) | metrics-server, requests/limits, стресс-тесты Locust, HPA + VPA, locust-operator |
 | 8 | CI/CD | [hw-8/](hw-8/) | semantic-release, GitHub Actions: тег → сборка образа в GHCR → деплой |
+| 9 | Werf | [hw-9/](hw-9/) | Рефакторинг чарта в werf-проект, helm submodules, глобальные values, интеграция с Vault |
 
 ---
 
@@ -91,3 +92,20 @@ Go API с PostgreSQL под нагрузкой Locust: от начальных �
 Workflow: [.github/workflows/hw8-release.yml](.github/workflows/hw8-release.yml)
 
 Подробнее: [hw-8/README.MD](hw-8/README.MD) | Чеклист для защиты: [hw-8/CHECKLIST.MD](hw-8/CHECKLIST.MD)
+
+---
+
+### ДЗ 9: Werf
+
+Приложение из ДЗ 1-2 (Go HTTP API + PostgreSQL) переехало из «чарт + Makefile + helm-secrets»
+в самодостаточный werf-проект:
+
+- **werf-проект** — `werf.yaml` с тремя образами (app, cron, migrations) и исходниками рядом
+- **Helm submodules** — сабчарты `backend` и `postgres` в `.helm/charts/`, `dependencies` с `condition`
+- **Глобальные values** — порты, имена сервисов, хост Ingress и слоты под секреты в `global`
+- **Интеграция с Vault** — один скрипт: AppRole login → docker-токен → `werf cr login` →
+  секреты через `vals` → `werf converge --values`
+- В репозитории нет ни токена, ни пароля: только `ref+vault://`-ссылки
+- Изолированный namespace `k8s-hw9`, образы `ghcr.io/fastrapier/hw9`
+
+Подробнее: [hw-9/README.MD](hw-9/README.MD) | Чеклист для защиты: [hw-9/CHECKLIST.MD](hw-9/CHECKLIST.MD)

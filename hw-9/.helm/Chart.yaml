@@ -1,0 +1,19 @@
+apiVersion: v2
+name: hw9
+description: HW9 - Go HTTP API + PostgreSQL как werf-проект
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+# Helm submodules: сабчарты лежат в .helm/charts/ как обычные директории,
+# repository указывает на них же (file://) — Chart.lock тогда генерируется
+# helm dependency update и werf не ищет их в удалённых репозиториях.
+dependencies:
+  - name: postgres
+    version: 1.0.0
+    repository: "file://charts/postgres"
+    condition: postgres.enabled
+  - name: backend
+    version: 1.0.0
+    repository: "file://charts/backend"
+    condition: backend.enabled
