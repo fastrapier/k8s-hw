@@ -1,0 +1,18 @@
+{
+  "name": "hw-8-release",
+  "version": "0.0.0-managed-by-semantic-release",
+  "private": true,
+  "description": "semantic-release configuration for k8s-hw homework 8 (CI/CD)",
+  "scripts": {
+    "release": "semantic-release",
+    "release:dry": "semantic-release --dry-run --no-ci"
+  },
+  "devDependencies": {
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/github": "^11.0.6",
+    "@semantic-release/release-notes-generator": "^14.1.0",
+    "conventional-changelog-conventionalcommits": "^9.1.0",
+    "semantic-release": "^24.2.9"
+  }
+}

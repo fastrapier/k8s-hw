@@ -15,6 +15,7 @@ https://t.me/imperial_dan
 | 3 | RabbitMQ + Celery | [hw-3/](hw-3/) | Брокер сообщений, Go Producer/Consumer, Python Celery/Flower/FastAPI |
 | 4 | Redis + кэширование | [hw-4/](hw-4/) | Redis, RedisInsight, CacheManager с TTL, кэширование API-запросов |
 | 7 | Масштабирование | [hw-7/](hw-7/) | metrics-server, requests/limits, стресс-тесты Locust, HPA + VPA, locust-operator |
+| 8 | CI/CD | [hw-8/](hw-8/) | semantic-release, GitHub Actions: тег → сборка образа в GHCR → деплой |
 
 ---
 
@@ -67,8 +68,26 @@ Go API с PostgreSQL под нагрузкой Locust: от начальных �
 - **Locust** — тест на GET-эндпоинты API (`/db/requests`, `/db/report`, `/db/stats`),
   настройки в `locust.conf`, ступенчатый поиск максимума пользователей по CSV-отчётам
 - **HPA** — `autoscaling/v2`, CPU 70%, 2–6 реплик, быстро вверх / окно стабилизации 300 с вниз
-- **VPA** — чарт Fairwinds, `updateMode: "Off"` (только рекомендации, чтобы не конфликтовать с HPA по CPU)
+- **VPA** — чарт Fairwinds, `updateMode: "Recreate"`, автоматически меняет requests памяти; HPA использует CPU
 - **locust-operator** — `LocustTest` + ConfigMap с `locustfile.py` + Ingress на `load-test-v2-webui:8089`
 - Изолированный namespace `k8s-hw7`, сборка и деплой через werf + GHCR
 
 Подробнее: [hw-7/README.MD](hw-7/README.MD) | Чеклист для защиты: [hw-7/CHECKLIST.MD](hw-7/CHECKLIST.MD)
+
+---
+
+### ДЗ 8: CI/CD
+
+Пайплайн в GitHub Actions, где версия образа считается автоматически по Conventional Commits:
+
+- **semantic-release** — считает следующую версию по сообщениям коммитов, создаёт git-тег `vX.Y.Z` и GitHub Release с release notes
+- **Сборка образа по тегу** — buildx собирает `ghcr.io/fastrapier/hw8:<version>`, версия и git-sha зашиваются в бинарник через `-ldflags`
+- **Деплой по тегу** — `helm upgrade --install` с `--set image.tag=<version>`; тот же чарт используется и локально
+- **Приложение** — минимальный Go HTTP-сервис с `GET /healthz` и `GET /version`
+- **Свой self-hosted раннер** — Actions Runner Controller ставится двумя OCI-чартами GitHub в minikube (`arc-systems` + `arc-runners`); джоба `deploy` уезжает на него и деплоит изнутри кластера, без kubeconfig в секретах
+- На pull request — dry-run версии и сборка образа без push; реальный релиз только при push в `main`
+- Изолированный namespace `k8s-hw8`
+
+Workflow: [.github/workflows/hw8-release.yml](.github/workflows/hw8-release.yml)
+
+Подробнее: [hw-8/README.MD](hw-8/README.MD) | Чеклист для защиты: [hw-8/CHECKLIST.MD](hw-8/CHECKLIST.MD)
