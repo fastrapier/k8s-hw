@@ -10,6 +10,7 @@ fi
 
 ensure_minikube
 require_cmd curl "входит в macOS"
+require_cmd jq "brew install jq"
 
 trap sonar_port_forward_cleanup EXIT
 
@@ -34,13 +35,14 @@ change_code=$(curl -s -o /tmp/sonar-chpwd.out -w '%{http_code}' \
 if [ "$change_code" = "204" ] || [ "$change_code" = "200" ]; then
   echo "[OK] Пароль admin сменён, значение в Keychain ($KEYCHAIN_PASSWORD_SERVICE)"
 else
-  auth_code=$(curl -s -o /dev/null -w '%{http_code}' \
+  auth_valid=$(curl -fsS \
     -u "admin:${ADMIN_PASSWORD}" \
-    "${SONAR_LOCAL_URL}/api/authentication/validate?format=json") || true
-  if [ "$auth_code" = "200" ]; then
+    "${SONAR_LOCAL_URL}/api/authentication/validate?format=json" \
+    | jq -r '.valid') || true
+  if [ "$auth_valid" = "true" ]; then
     echo "[INFO] Пароль уже сменён ранее, текущий пароль из Keychain подходит"
   else
-    echo "[ERROR] Не удалось ни сменить пароль (код $change_code), ни авторизоваться сохранённым (код $auth_code)"
+    echo "[ERROR] Не удалось ни сменить пароль (код $change_code), ни авторизоваться сохранённым"
     echo "        Сбросить: удалите Keychain-запись ($KEYCHAIN_PASSWORD_SERVICE) и переустановите релиз"
     cat /tmp/sonar-chpwd.out 2>/dev/null || true
     exit 1

@@ -38,11 +38,21 @@ ensure_base() {
 
 ensure_minikube() {
   ensure_base
-  if ! minikube status --format='{{.Host}}' 2>/dev/null | grep -q "Running"; then
-    echo "[ERROR] Minikube не запущен. Запустите: minikube start"
+  local profile="${MINIKUBE_PROFILE:-$(minikube profile 2>/dev/null)}"
+  profile="${profile#\* }"
+  if [ -z "$profile" ]; then
+    echo "[ERROR] Не выбран профиль minikube. Укажите MINIKUBE_PROFILE." >&2
+    return 1
+  fi
+  export MINIKUBE_PROFILE="$profile"
+  if ! minikube -p "$profile" status --format='{{.Host}}' 2>/dev/null | grep -q "Running"; then
+    echo "[ERROR] Minikube '$profile' не запущен. Запустите: minikube start -p $profile"
     exit 1
   fi
-  kubectl config use-context minikube &>/dev/null
+  if ! kubectl config use-context "$profile" >/dev/null; then
+    echo "[ERROR] В kubeconfig нет контекста '$profile'. Проверьте KUBECONFIG." >&2
+    return 1
+  fi
 }
 
 add_host() {
@@ -110,8 +120,8 @@ keychain_get_or_create() {
     return
   fi
   local generated
-  # SonarQube требует пароль посложнее дефолтного; берём url-safe base64.
-  generated="Hw10-$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24)"
+  require_cmd openssl "входит в macOS" >&2
+  generated="Hw10-$(openssl rand -hex 16)"
   security add-generic-password -a "$KEYCHAIN_ACCOUNT" -s "$service" -w "$generated" -U
   echo "$generated"
 }

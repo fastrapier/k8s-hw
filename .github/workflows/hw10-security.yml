@@ -154,9 +154,10 @@ jobs:
     name: SonarQube - статический анализ
     # SonarQube живёт в minikube, у GitHub-hosted раннера до него нет сети.
     # Переменная HW8_RUNNER - метка self-hosted раннера из ДЗ 8 (часть 2);
-    # fallback обязателен, иначе без раннера джоба висела бы в очереди до
-    # таймаута GitHub вместо честного пропуска.
+    # Fallback применяется только при пустой переменной. Если метка задана,
+    # для запуска джобы нужен работающий ARC-раннер с этой меткой.
     runs-on: ${{ vars.HW8_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -192,7 +193,7 @@ jobs:
       - name: Go-покрытие
         if: steps.cfg.outputs.ready == 'true'
         run: |
-          for module in hw1-2 hw-3/go hw-4 hw-8; do
+          for module in hw1-2 hw-3/go hw-4 hw-7 hw-8 hw-9; do
             [ -f "$module/go.mod" ] || continue
             echo "::group::go test $module"
             ( cd "$module" && go test ./... -coverprofile=coverage.out -covermode=atomic ) \
@@ -201,6 +202,7 @@ jobs:
           done
 
       - name: sonar-scanner
+        id: scan
         if: steps.cfg.outputs.ready == 'true'
         uses: SonarSource/sonarqube-scan-action@v8
         env:
@@ -221,13 +223,16 @@ jobs:
         if: always()
         env:
           READY: ${{ steps.cfg.outputs.ready }}
+          SCAN_OUTCOME: ${{ steps.scan.outcome }}
           RUNS_ON: ${{ vars.HW8_RUNNER || 'ubuntu-latest' }}
         run: |
           {
             echo "### SonarQube"
             echo "- раннер: \`$RUNS_ON\`"
-            if [ "$READY" = "true" ]; then
+            if [ "$SCAN_OUTCOME" = "success" ]; then
               echo "- анализ выполнен, отчёт - в UI SonarQube (проект \`k8s-hw\`)"
+            elif [ "$READY" = "true" ]; then
+              echo "- анализ не завершён успешно: \`$SCAN_OUTCOME\`; см. лог шагов"
             else
               echo "- пропущен: нет секретов \`SONAR_TOKEN\` / \`SONAR_HOST_URL\`"
             fi

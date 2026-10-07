@@ -2,11 +2,30 @@
 
 ## Подготовка
 
+Команды ниже выполняются из `hw-10/`. Кластер и ARC-раннер из ДЗ 8
+уже должны работать. Каждый шаг запускайте отдельно и проверяйте его вывод.
+
 ```bash
-minikube start
-minikube tunnel        # отдельный терминал
-cd hw-10 && ./init.sh  # ~10-15 минут, первый старт SonarQube долгий
+cd /Users/notwork/dopki/k8s-hw/hw-10
+export MINIKUBE_PROFILE=k8s-exam
+./scripts/01-precommit.sh
+./scripts/06-trufflehog-local.sh
+./scripts/05-trivy-local.sh
+./scripts/02-deploy-sonarqube.sh  # первый старт может занять до 15 минут
+./scripts/03-configure-sonarqube.sh --set-secrets
 ```
+
+Основной показ анализа — джоба SonarQube в GitHub Actions и отчёт в UI.
+`./scripts/04-sonar-scan-local.sh` — необязательный запуск для диагностики.
+
+Для UI можно обойтись без туннеля и DNS `.local`: в отдельном терминале
+держите `kubectl --context=k8s-exam port-forward -n k8s-hw10 svc/sonarqube-sonarqube 9000:9000`
+и откройте http://127.0.0.1:9000. Логин `admin`, пароль из Keychain
+(команда приведена ниже). Скрипты настройки и сканирования также используют порт 9000.
+
+`--set-secrets` сохраняет токен и внутрикластерный URL в GitHub Actions.
+Workflow до мержа запускается через событие `pull_request` после push ветки;
+`workflow_dispatch` станет доступен, когда workflow попадёт в `main`.
 
 Если кластер поднимать не нужно — достаточно `./scripts/01-precommit.sh`,
 части 1 и 2 демонстрируются без Kubernetes.
@@ -82,12 +101,16 @@ cd hw-10 && ./init.sh  # ~10-15 минут, первый старт SonarQube д
   ```
 
 - [ ] Показать в выводе три вещи:
-  - таблицу уязвимостей: 18 находок HIGH+CRITICAL, у всех есть фикс;
-  - таблицу misconfig: 46 HIGH, всего три правила
+  - таблицу уязвимостей с установленными и исправленными версиями;
+  - таблицу misconfig, например правила
     (`KSV-0118` дефолтный security context, `KSV-0014` root-fs не read-only,
     `DS-0002` образ работает root-ом);
-  - блок **Suppressed Vulnerabilities** — три CRITICAL с текстом обоснования
-    прямо в таблице.
+  - блок **Suppressed Vulnerabilities** — исключения для ДЗ 1-2 с текстом
+    обоснования прямо в таблице. Числа и severity меняются с базой Trivy.
+
+- [ ] Объяснить результат подготовки 7 октября: гейт выявил 10 CRITICAL
+  в ДЗ 3, 4, 7 и 9. Обновление `amqp091-go` до 1.13.0 и `pgx/v5` до 5.9.0
+  позволило пройти повторный гейт без новых исключений. Подробности — в README.
 
 - [ ] Показать реестр принятых рисков:
   ```bash
@@ -113,8 +136,8 @@ cd hw-10 && ./init.sh  # ~10-15 минут, первый старт SonarQube д
   gh run view --web
   ```
 - [ ] Показать зелёные джобы `trufflehog` и `trivy`.
-- [ ] Показать джобу `sonarqube`: пропущена с `::warning::`, потому что
-  секреты `SONAR_TOKEN` / `SONAR_HOST_URL` не заданы.
+- [ ] Показать джобу `sonarqube`: анализ выполнен на `hw8-minikube`, отчёт
+  появился в UI. При отсутствии секретов анализ пропускается с warning.
 - [ ] Показать Job summary: режим сканирования TruffleHog, раннер SonarQube.
 - [ ] Показать четыре триггера в workflow и объяснить `schedule`: «базы
   уязвимостей обновляются без нас, код может быть неизменным, а находки
@@ -162,8 +185,8 @@ cd hw-10 && ./init.sh  # ~10-15 минут, первый старт SonarQube д
   ```
 - [ ] Объяснить: «SonarQube живёт в minikube, у GitHub-hosted раннера до него
   нет сети — та же проблема, что у джобы `deploy` в ДЗ 8, и то же решение:
-  метка `HW8_RUNNER` с обязательным fallback. Без fallback джоба висела бы
-  в очереди до таймаута, когда minikube выключен».
+  метка `HW8_RUNNER`. Fallback действует только при пустой переменной;
+  с заданной меткой и выключенным кластером джоба ждёт раннер».
 - [ ] Показать два варианта `SONAR_HOST_URL`:
   - раннер в кластере: `http://sonarqube-sonarqube.k8s-hw10.svc:9000`
   - раннер снаружи: внешний адрес SonarQube
@@ -178,7 +201,10 @@ cd hw-10 && ./init.sh  # ~10-15 минут, первый старт SonarQube д
 - [ ] Запустить повторно — ничего не сломается:
   ```bash
   ./init.sh
+  ./scripts/03-configure-sonarqube.sh --set-secrets
   ```
+- [ ] После повторной настройки обновить секреты CI: скрипт пересоздаёт токен,
+  а без `--set-secrets` в GitHub останется отозванное значение.
 - [ ] Объяснить: «Пароль и passcode берутся из Keychain, а не генерируются
   заново — иначе повторный запуск ломал бы уже выданный CI-токен. Проект
   создаётся с проверкой `key already exists`. Токен отзывается и выдаётся
@@ -190,6 +216,8 @@ cd hw-10 && ./init.sh  # ~10-15 минут, первый старт SonarQube д
 
 ```bash
 # Локальные прогоны
+brew install sonar-scanner  # CLI для Mac, без эмуляции Docker-образа amd64
+./scripts/04-sonar-scan-local.sh
 ./scripts/05-trivy-local.sh
 ./scripts/06-trufflehog-local.sh --all
 pre-commit run --all-files
