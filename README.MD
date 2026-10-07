@@ -14,6 +14,7 @@ https://t.me/imperial_dan
 | 1-2 | Helm + Vault | [hw1-2/](hw1-2/) | Helm-чарт приложения, интеграция с HashiCorp Vault (AppRole, helm-secrets) |
 | 3 | RabbitMQ + Celery | [hw-3/](hw-3/) | Брокер сообщений, Go Producer/Consumer, Python Celery/Flower/FastAPI |
 | 4 | Redis + кэширование | [hw-4/](hw-4/) | Redis, RedisInsight, CacheManager с TTL, кэширование API-запросов |
+| 7 | Масштабирование | [hw-7/](hw-7/) | metrics-server, requests/limits, стресс-тесты Locust, HPA + VPA, locust-operator |
 | 8 | CI/CD | [hw-8/](hw-8/) | semantic-release, GitHub Actions: тег → сборка образа в GHCR → деплой |
 
 ---
@@ -55,6 +56,23 @@ https://t.me/imperial_dan
 - Изолированный namespace `k8s-hw4`
 
 Подробнее: [hw-4/README.MD](hw-4/README.MD) | Чеклист для защиты: [hw-4/CHECKLIST.MD](hw-4/CHECKLIST.MD)
+
+---
+
+### ДЗ 7: Масштабирование
+
+Go API с PostgreSQL под нагрузкой Locust: от начальных лимитов до автомасштабирования.
+
+- **metrics-server** — addon minikube, источник CPU/RAM для `kubectl top`, HPA и VPA
+- **requests/limits** — начальные значения по замерам в покое, новые — по критической точке
+- **Locust** — тест на GET-эндпоинты API (`/db/requests`, `/db/report`, `/db/stats`),
+  настройки в `locust.conf`, ступенчатый поиск максимума пользователей по CSV-отчётам
+- **HPA** — `autoscaling/v2`, CPU 70%, 2–6 реплик, быстро вверх / окно стабилизации 300 с вниз
+- **VPA** — чарт Fairwinds, `updateMode: "Recreate"`, автоматически меняет requests памяти; HPA использует CPU
+- **locust-operator** — `LocustTest` + ConfigMap с `locustfile.py` + Ingress на `load-test-v2-webui:8089`
+- Изолированный namespace `k8s-hw7`, сборка и деплой через werf + GHCR
+
+Подробнее: [hw-7/README.MD](hw-7/README.MD) | Чеклист для защиты: [hw-7/CHECKLIST.MD](hw-7/CHECKLIST.MD)
 
 ---
 

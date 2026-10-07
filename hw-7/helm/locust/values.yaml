@@ -1,0 +1,59 @@
+# Имя LocustTest. От него оператор образует имена Job-ов и Service:
+# <name>-master, <name>-worker. Задание требует Ingress на load-test-v2-webui,
+# поэтому имя менять не стоит без правки README.
+name: load-test-v2
+
+# Образ обязателен (в CRD нет default) и должен быть запинён.
+image: locustio/locust:2.43.3
+imagePullPolicy: IfNotPresent
+
+# URL приложения. Пусто — берётся api.<namespace>.svc.cluster.local:
+# внутри кластера ходить через Ingress незачем.
+target:
+  host: ""
+  service: api
+  port: 80
+
+# Параметры прогона — те же, что в hw-7/locust/locust.conf (часть 2).
+load:
+  users: 100
+  spawnRate: 10
+  runTime: 3m
+
+master:
+  # Оператор сам добавляет --autostart, поэтому тест стартует без нажатия
+  # кнопки в UI, а UI остаётся живым и показывает прогон.
+  autostart: true
+  autoquit:
+    # После окончания прогона мастер живёт ещё timeout секунд — иначе web UI
+    # и Ingress отдавали бы 503 сразу после теста, и показать нечего.
+    enabled: true
+    timeout: 600
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+worker:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 200m
+      memory: 128Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+
+# Service для web UI. Оператор его НЕ создаёт (порт 8089 намеренно исключён
+# из master-сервиса), поэтому объявляем сами — см. README.MD.
+webui:
+  enabled: true
+  port: 8089
+
+ingress:
+  enabled: true
+  className: nginx
+  host: locust-hw7.local

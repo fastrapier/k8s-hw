@@ -1,0 +1,25 @@
+image:
+  repository: postgres
+  tag: "17"
+  pullPolicy: IfNotPresent
+
+storage:
+  size: 1Gi
+  mountPath: /var/lib/postgresql
+  subPath: data
+
+# Postgres тоже с requests/limits: без них HPA видит «бесконечную» ноду,
+# а kubectl top даёт цифры, которые не с чем сравнить.
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+
+# Под нагрузкой в 100+ пользователей дефолтных 100 соединений хватает,
+# но shared_buffers по умолчанию мал для контейнера — поднимаем.
+config:
+  maxConnections: 200
+  sharedBuffers: 128MB

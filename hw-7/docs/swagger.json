@@ -1,0 +1,377 @@
+{
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "schemes": [
+    "http",
+    "https"
+  ],
+  "swagger": "2.0",
+  "info": {
+    "description": "HW7 API демонстрирует health/readiness, version, secrets и GET-эндпоинты над Postgres,\nкоторые используются как цель нагрузочного теста Locust.",
+    "title": "Package classification HW7 API.",
+    "contact": {
+      "name": "Dev Team",
+      "email": "fastrapier1@yandex.ru"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "http://opensource.org/licenses/MIT"
+    },
+    "version": "1.1.0"
+  },
+  "basePath": "/",
+  "paths": {
+    "/": {
+      "get": {
+        "tags": [
+          "core"
+        ],
+        "summary": "Returns greeting message.",
+        "operationId": "hello",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/helloResponse"
+          }
+        }
+      }
+    },
+    "/db/report": {
+      "get": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Returns a checksum over N rows: SQL query plus CPU-bound hashing.",
+        "operationId": "dbReport",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/dbReportResponse"
+          }
+        }
+      }
+    },
+    "/db/requests": {
+      "get": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Returns last N rows of the requests table.",
+        "operationId": "listRequests",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/dbListResponse"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Creates db record with request timestamp.",
+        "operationId": "insertRequest",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/dbInsertResponse"
+          }
+        }
+      }
+    },
+    "/db/stats": {
+      "get": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Returns aggregates over the requests table.",
+        "operationId": "dbStats",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/dbStatsResponse"
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "tags": [
+          "healthcheck"
+        ],
+        "summary": "Liveness/health check.",
+        "operationId": "healthz",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/healthzResponse"
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "tags": [
+          "healthcheck"
+        ],
+        "summary": "Readiness check: учитывает время прогрева и готовность БД (если сконфигурирована).",
+        "operationId": "readyz",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/readinessResponse"
+          }
+        }
+      }
+    },
+    "/secret": {
+      "get": {
+        "tags": [
+          "secret"
+        ],
+        "summary": "Returns (masked) secret values injected via environment.",
+        "operationId": "secret",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/secretResponse"
+          }
+        }
+      }
+    },
+    "/test-env": {
+      "get": {
+        "tags": [
+          "config-map"
+        ],
+        "summary": "Returns value configured via CONFIG_MAP_ENV_VAR.",
+        "operationId": "testEnv",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/envResponse"
+          }
+        }
+      }
+    },
+    "/version": {
+      "get": {
+        "tags": [
+          "core"
+        ],
+        "summary": "Returns service version \u0026 go runtime.",
+        "operationId": "version",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/versionResponse"
+          }
+        }
+      }
+    }
+  },
+  "responses": {
+    "dbInsertResponse": {
+      "description": "DB insert result.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "x-go-name": "CreatedAt"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "x-go-name": "ID"
+          },
+          "pod": {
+            "type": "string",
+            "x-go-name": "Pod"
+          }
+        }
+      }
+    },
+    "dbListResponse": {
+      "description": "Last N rows of the requests table.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "x-go-name": "Count"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "x-go-name": "CreatedAt"
+                },
+                "id": {
+                  "type": "integer",
+                  "format": "int64",
+                  "x-go-name": "ID"
+                }
+              }
+            },
+            "x-go-name": "Items"
+          },
+          "pod": {
+            "type": "string",
+            "x-go-name": "Pod"
+          }
+        }
+      }
+    },
+    "dbReportResponse": {
+      "description": "Checksum report over N rows.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "checksum": {
+            "type": "string",
+            "x-go-name": "Checksum"
+          },
+          "elapsedMs": {
+            "type": "integer",
+            "format": "int64",
+            "x-go-name": "ElapsedMs"
+          },
+          "generated": {
+            "type": "string",
+            "format": "date-time",
+            "x-go-name": "Generated"
+          },
+          "pod": {
+            "type": "string",
+            "x-go-name": "Pod"
+          },
+          "rounds": {
+            "type": "integer",
+            "format": "int64",
+            "x-go-name": "Rounds"
+          },
+          "rows": {
+            "type": "integer",
+            "format": "int64",
+            "x-go-name": "Rows"
+          }
+        }
+      }
+    },
+    "dbStatsResponse": {
+      "description": "Aggregates over the requests table.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "pod": {
+            "type": "string",
+            "x-go-name": "Pod"
+          },
+          "stats": {
+            "type": "object",
+            "properties": {
+              "first": {
+                "type": "string",
+                "format": "date-time",
+                "x-go-name": "First"
+              },
+              "last": {
+                "type": "string",
+                "format": "date-time",
+                "x-go-name": "Last"
+              },
+              "recentHour": {
+                "type": "integer",
+                "format": "int64",
+                "x-go-name": "RecentHour"
+              },
+              "total": {
+                "type": "integer",
+                "format": "int64",
+                "x-go-name": "Total"
+              }
+            },
+            "x-go-name": "Stats"
+          }
+        }
+      }
+    },
+    "envResponse": {
+      "description": "Represents environment variable output.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "configMapEnvVar": {
+            "type": "string",
+            "x-go-name": "ConfigMapEnvVar"
+          }
+        }
+      }
+    },
+    "healthzResponse": {
+      "description": "Health status.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "x-go-name": "Status"
+          }
+        }
+      }
+    },
+    "helloResponse": {
+      "description": "Represents greeting message.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "x-go-name": "Message"
+          }
+        }
+      }
+    },
+    "readinessResponse": {
+      "description": "Readiness status.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "ready": {
+            "type": "string",
+            "x-go-name": "Ready"
+          }
+        }
+      }
+    },
+    "secretResponse": {
+      "description": "Secret (masked) values.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "x-go-name": "Password"
+          },
+          "username": {
+            "type": "string",
+            "x-go-name": "Username"
+          }
+        }
+      }
+    },
+    "versionResponse": {
+      "description": "Service version.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "x-go-name": "Version"
+          }
+        }
+      }
+    }
+  }
+}

@@ -85,11 +85,17 @@ ensure_base() {
 
 ensure_minikube() {
   ensure_base
-  if ! minikube status --format='{{.Host}}' 2>/dev/null | grep -q "Running"; then
-    echo "[ERROR] Minikube не запущен. Запустите: minikube start"
+  local profile
+  profile="${MINIKUBE_PROFILE:-$(minikube profile)}"
+  profile="${profile#\* }"
+  if ! minikube -p "$profile" status --format='{{.Host}}' 2>/dev/null | grep -q "Running"; then
+    echo "[ERROR] Minikube '$profile' не запущен. Запустите: minikube start -p $profile"
     exit 1
   fi
-  kubectl config use-context minikube &>/dev/null
+  if ! kubectl config use-context "$profile" >/dev/null; then
+    echo "[ERROR] В kubeconfig нет контекста '$profile'. Проверьте KUBECONFIG." >&2
+    return 1
+  fi
 }
 
 ensure_node() {

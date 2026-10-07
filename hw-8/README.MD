@@ -557,6 +557,9 @@ helm template hw8-minikube oci://ghcr.io/actions/actions-runner-controller-chart
 
 ## Быстрый старт
 
+Скрипты используют активный профиль minikube. Для экзаменационного стенда можно
+явно задать `export MINIKUBE_PROFILE=k8s-exam` перед запуском.
+
 Локальный деплой уже опубликованного тега в minikube плюс свой раннер:
 
 ```bash
