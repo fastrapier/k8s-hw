@@ -6,12 +6,22 @@
 minikube start
 minikube tunnel                # отдельный терминал
 git fetch --tags
-cd hw-8 && ./init.sh           # деплой последнего тега, ~1 минута
+cd hw-8 && ./init.sh           # деплой последнего тега + раннер, ~5 минут
+```
+
+Проверить, что раннер поднялся и подключён:
+
+```bash
+kubectl get pods -n arc-systems
+kubectl get pods -n arc-runners
+gh variable list               # ожидаем HW8_RUNNER=hw8-minikube
 ```
 
 ---
 
 ## Порядок демонстрации
+
+Пункты 1–10 — часть 1 (тег, образ, деплой), пункты 11–14 — часть 2 (свой раннер).
 
 ### 1. semantic-release — конфигурация
 
@@ -149,16 +159,109 @@ cd hw-8 && ./init.sh           # деплой последнего тега, ~1 
 
 ### 10. Почему деплой из GitHub-hosted раннера пропускается
 
-- [ ] Показать шаг `Kubeconfig` в джобе `deploy` и `::warning::` в логах
+- [ ] Показать шаг `Kubeconfig` в джобе `deploy` и `::warning::` в логах старого прогона
 - [ ] Объяснить: «GitHub-hosted раннер в облаке не имеет сетевого доступа к minikube
       на ноутбуке; поэтому шаг честно предупреждает и не падает»
-- [ ] Объяснить, что это решает часть 2: self-hosted раннер внутри кластера,
-      после чего в джобе меняется только `runs-on`
+- [ ] Объяснить, что это решает часть 2 — раннер внутри кластера
 
-### 11. Идемпотентность
+---
+
+## Часть 2 — свой раннер
+
+### 11. Раннер развёрнут через helm-chart
+
+- [ ] Показать, какими чартами ставится раннер (`hw-8/scripts/common.sh`,
+      `ARC_CHART_VERSION`, `ARC_CONTROLLER_CHART`, `ARC_RUNNER_CHART`):
+      два OCI-чарта GitHub, версия запинена — `0.14.2`
+- [ ] Показать helm-релизы:
+  ```bash
+  helm list -n arc-systems
+  helm list -n arc-runners
+  ```
+  Ожидаем `arc` (контроллер) и `hw8-minikube` (scale set)
+- [ ] Показать поды контроллера и listener'а:
+  ```bash
+  kubectl get pods -n arc-systems
+  ```
+- [ ] Показать scale set и под раннера:
+  ```bash
+  kubectl get autoscalingrunnersets -n arc-runners
+  kubectl get pods -n arc-runners
+  ```
+- [ ] Показать values: `hw-8/arc/runner-values.yaml`
+  - `githubConfigUrl` — репозиторий, к которому подключается раннер
+  - `githubConfigSecret` строкой — pre-defined secret, PAT не идёт через helm values
+  - `minRunners: 1` / `maxRunners: 2`
+  - `template.spec.serviceAccountName` — вместо SA без прав, который создал бы чарт
+- [ ] Объяснить схему из README: listener держит long poll → контроллер поднимает
+      ephemeral-под → под забирает джобу → под удаляется
+
+### 12. Раннер подключён к проекту
+
+- [ ] Показать, что GitHub видит раннер:
+  ```bash
+  gh api repos/fastrapier/k8s-hw/actions/runners \
+    --jq '.runners[] | "\(.name) \(.status) \([.labels[].name]|join(","))"'
+  ```
+- [ ] То же в UI: Settings → Actions → Runners → scale set `hw8-minikube`
+- [ ] Показать, где берётся токен: `arc_github_token` в `scripts/common.sh` —
+      classic PAT со scope `repo` из macOS Keychain (`-s github-arc`),
+      fallback на `gh auth token` с предупреждением
+- [ ] Обратить внимание: токена нет ни в одном файле репозитория, он попадает
+      только в secret `hw8-runner-github-token`
+- [ ] Показать RBAC: `hw-8/arc/deployer-rbac.yaml`
+  ```bash
+  kubectl auth can-i --as=system:serviceaccount:arc-runners:hw8-runner-deployer \
+    create deployments -n k8s-hw8
+  kubectl auth can-i --as=system:serviceaccount:arc-runners:hw8-runner-deployer \
+    create deployments -n kube-system      # ожидаем no
+  ```
+- [ ] Объяснить единственное кластерное право (`namespaces: create`):
+      `helm --create-namespace` всегда делает POST, `409` игнорируется, `403` — нет
+- [ ] Показать переключатель в пайплайне:
+  ```bash
+  gh variable list
+  ```
+  `HW8_RUNNER=hw8-minikube`, а в workflow — `runs-on: ${{ vars.HW8_RUNNER || 'ubuntu-latest' }}`
+- [ ] Объяснить fallback: без него джоба висела бы в очереди, когда minikube выключен
+
+### 13. Пайплайн запущен на подключенном раннере
+
+- [ ] Запустить деплой уже опубликованного тега:
+  ```bash
+  gh workflow run hw8-release.yml -f tag=1.0.0
+  gh run watch
+  ```
+- [ ] Параллельно показать, как появляется под под джобу:
+  ```bash
+  kubectl get pods -n arc-runners -w
+  ```
+- [ ] Показать в прогоне, что `release` и `build` пропущены, а `deploy` выполнен
+- [ ] Открыть лог шага «Где выполняется джоба» и показать:
+  - `runs-on: hw8-minikube`
+  - `runner.name` — имя пода раннера
+  - `RUNNER_ENVIRONMENT: self-hosted`
+  - `внутри кластера: да, API 10.96.0.1`
+- [ ] Показать в логе шага `Kubeconfig`: `::notice::Раннер работает внутри
+      кластера — используется ServiceAccount hw8-runner-deployer`
+      (kubeconfig из секрета не нужен)
+- [ ] Показать в логе шага `helm upgrade --install` успешный `helm` и
+      `kubectl rollout status`
+- [ ] Показать результат в кластере — тег из пайплайна:
+  ```bash
+  kubectl get deployment hw8-app -n k8s-hw8 \
+    -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+  kubectl run curl-hw8 --rm -it --restart=Never -n k8s-hw8 \
+    --image=curlimages/curl -- curl -s http://hw8-app/version
+  ```
+- [ ] Объяснить, почему `build` остался на GitHub-hosted: `containerMode` не задан,
+      dind в minikube не нужен, сборка в облаке уже кеширует слои
+
+### 14. Идемпотентность и очистка
 
 - [ ] Повторно запустить `./init.sh` — падать не должен
-- [ ] Показать `./teardown.sh`
+- [ ] Показать `./teardown.sh` и порядок удаления: сначала `HW8_RUNNER`, потом
+      scale set, потом контроллер (finalizer'ы снимает контроллер, иначе зависнет)
 
 ---
 
@@ -187,6 +290,18 @@ kubectl run curl-hw8 --rm -it --restart=Never -n k8s-hw8 \
 
 # Деплой другого тега
 cd hw-8 && ./scripts/02-deploy.sh 1.0.0
+
+# Свой раннер
+kubectl get pods -n arc-systems
+kubectl get pods -n arc-runners
+kubectl get autoscalingrunnersets -n arc-runners
+gh api repos/fastrapier/k8s-hw/actions/runners \
+  --jq '.runners[] | "\(.name) \(.status)"'
+gh variable list
+
+# Прогон деплоя на своём раннере, без нового релиза
+gh workflow run hw8-release.yml -f tag=1.0.0
+gh run watch
 
 # Очистить всё
 ./teardown.sh
