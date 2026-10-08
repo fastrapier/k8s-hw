@@ -1,0 +1,277 @@
+{{- $smtpEnabled := eq (env "GRAFANA_SMTP_ENABLED" | default "false") "true" -}}
+adminUser: admin
+# Пароль приезжает из env (Keychain или hw-11/.env) и в git не попадает.
+adminPassword: {{ requiredEnv "GRAFANA_ADMIN_PASSWORD" | quote }}
+
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  hosts:
+    - {{ .Values.hosts.grafana }}
+  path: /
+
+# Всё состояние (datasources, дашборды, алерты) задаётся provisioning-ом из values,
+# поэтому терять PVC при переустановке нечего.
+persistence:
+  enabled: false
+
+# helm test здесь не запускаем, а его Pod/ServiceAccount иначе остаются в namespace.
+testFramework:
+  enabled: false
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 512Mi
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      # uid фиксирован: на него ссылаются provisioned alert rules ниже
+      - name: Prometheus
+        uid: prometheus
+        type: prometheus
+        access: proxy
+        url: http://kube-prometheus-stack-prometheus.{{ .Values.namespace }}.svc.cluster.local:9090
+        isDefault: true
+        jsonData:
+          timeInterval: 30s
+      - name: Loki
+        uid: loki
+        type: loki
+        access: proxy
+        url: http://loki-gateway.{{ .Values.namespace }}.svc.cluster.local
+      - name: Alertmanager
+        uid: alertmanager
+        type: alertmanager
+        access: proxy
+        url: http://kube-prometheus-stack-alertmanager.{{ .Values.namespace }}.svc.cluster.local:9093
+        jsonData:
+          implementation: prometheus
+
+# Дашборды кластера, которые кладёт kube-prometheus-stack (forceDeployDashboards),
+# приезжают сюда через sidecar по метке grafana_dashboard.
+sidecar:
+  dashboards:
+    enabled: true
+    label: grafana_dashboard
+    searchNamespace: {{ .Values.namespace }}
+    folder: /tmp/dashboards
+
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: hw11
+        orgId: 1
+        folder: hw-11
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/hw11
+
+# Готовые дашборды с grafana.com: init-контейнер скачивает JSON по gnetId,
+# поэтому поду Grafana нужен доступ в интернет на старте.
+dashboards:
+  hw11:
+    node-exporter:
+      gnetId: 1860
+      revision: 45
+      datasource: Prometheus
+    nginx-ingress:
+      gnetId: 9614
+      revision: 1
+      datasource: Prometheus
+    loki-logs:
+      gnetId: 13639
+      revision: 2
+      datasource: Loki
+
+# SMTP-пароль (токен приложения) кладём в Secret, а не в grafana.ini-ConfigMap.
+# В самом grafana.ini подставляется через $__env{}.
+{{ if $smtpEnabled }}
+envRenderSecret:
+  GF_SMTP_PASSWORD: {{ requiredEnv "GRAFANA_SMTP_PASSWORD" | quote }}
+{{ end }}
+
+grafana.ini:
+  server:
+    root_url: http://{{ .Values.hosts.grafana }}
+  smtp:
+{{ if $smtpEnabled }}
+    enabled: true
+    host: {{ env "GRAFANA_SMTP_HOST" | default "smtp.gmail.com:587" | quote }}
+    user: {{ requiredEnv "GRAFANA_SMTP_USER" | quote }}
+    password: $__env{GF_SMTP_PASSWORD}
+    from_address: {{ env "GRAFANA_SMTP_FROM_ADDRESS" | default (requiredEnv "GRAFANA_SMTP_USER") | quote }}
+    from_name: Grafana hw-11
+    startTLS_policy: MandatoryStartTLS
+{{ else }}
+    enabled: false
+{{ end }}
+  unified_alerting:
+    enabled: true
+  users:
+    default_theme: dark
+
+# Алертинг целиком описан здесь: контакт, политика маршрутизации и правила.
+# Provisioned-объекты в UI помечены read-only — это ожидаемо.
+alerting:
+{{ if $smtpEnabled }}
+  contactpoints.yaml:
+    apiVersion: 1
+    contactPoints:
+      - orgId: 1
+        name: email-hw11
+        receivers:
+          - uid: email-hw11
+            type: email
+            settings:
+              addresses: {{ env "ALERT_EMAIL" | default (requiredEnv "GRAFANA_SMTP_USER") | quote }}
+              singleEmail: true
+{{ else }}
+  mutetimes.yaml:
+    apiVersion: 1
+    muteTimes:
+      - orgId: 1
+        name: hw11-no-email
+        time_intervals:
+          - times:
+              - start_time: '00:00'
+                end_time: '24:00'
+{{ end }}
+
+  policies.yaml:
+    apiVersion: 1
+    policies:
+      - orgId: 1
+        receiver: {{ if $smtpEnabled }}email-hw11{{ else }}grafana-default-email{{ end }}
+        group_by:
+          - grafana_folder
+          - alertname
+        group_wait: 30s
+        group_interval: 1m
+        repeat_interval: 1h
+{{ if not $smtpEnabled }}
+        routes:
+          - receiver: grafana-default-email
+            object_matchers:
+              - ['hw', '=', '11']
+            mute_time_intervals:
+              - hw11-no-email
+{{ end }}
+
+  rules.yaml:
+    apiVersion: 1
+    groups:
+      - orgId: 1
+        name: ingress
+        folder: hw-11
+        interval: 1m
+        rules:
+          # Демонстрационное правило: срабатывает от нагрузки curl-ом по ингрессу,
+          # поэтому письмо можно получить руками за пару минут.
+          - uid: hw11-ingress-rps
+            title: "Ingress: RPS выше 1 запроса в секунду"
+            condition: C
+            for: 1m
+            noDataState: OK
+            execErrState: Error
+            annotations:
+              summary: "Суммарный RPS ingress-nginx превысил 1 req/s"
+              description: "Кто генерирует трафик — смотреть sum by (ingress) (rate(nginx_ingress_controller_requests[1m]))"
+            labels:
+              severity: info
+              hw: "11"
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                relativeTimeRange:
+                  from: 600
+                  to: 0
+                model:
+                  refId: A
+                  editorMode: code
+                  expr: sum(rate(nginx_ingress_controller_requests[1m]))
+                  instant: true
+                  range: false
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+              - refId: C
+                datasourceUid: __expr__
+                relativeTimeRange:
+                  from: 600
+                  to: 0
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - type: query
+                      evaluator:
+                        type: gt
+                        params:
+                          - 1
+                      operator:
+                        type: and
+                      query:
+                        params:
+                          - C
+                      reducer:
+                        type: last
+                        params: []
+
+          # clamp_min в знаменателе: без него при нулевом трафике получается 0/0 = NaN
+          # и правило уходит в NoData вместо OK.
+          - uid: hw11-ingress-5xx
+            title: "Ingress: доля 5xx выше 5%"
+            condition: C
+            for: 2m
+            noDataState: OK
+            execErrState: Error
+            annotations:
+              summary: "Более 5% ответов ingress-nginx — 5xx"
+            labels:
+              severity: warning
+              hw: "11"
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                relativeTimeRange:
+                  from: 600
+                  to: 0
+                model:
+                  refId: A
+                  editorMode: code
+                  expr: sum(rate(nginx_ingress_controller_requests{status=~"5.."}[5m])) / clamp_min(sum(rate(nginx_ingress_controller_requests[5m])), 0.001)
+                  instant: true
+                  range: false
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+              - refId: C
+                datasourceUid: __expr__
+                relativeTimeRange:
+                  from: 600
+                  to: 0
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - type: query
+                      evaluator:
+                        type: gt
+                        params:
+                          - 0.05
+                      operator:
+                        type: and
+                      query:
+                        params:
+                          - C
+                      reducer:
+                        type: last
+                        params: []

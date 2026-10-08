@@ -1,0 +1,16 @@
+controller:
+  # Namespace, в котором addon ingress разворачивает контроллер.
+  namespace: ingress-nginx
+  # Порт внутреннего HTTP-сервера контроллера: /healthz, /metrics, /nginx_status.
+  metricsPort: 10254
+  # Метки под контроллера из манифеста addon-а (deploy/addons/ingress/ingress-deploy.yaml).
+  selectorLabels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/component: controller
+
+serviceMonitor:
+  interval: 30s
+  scrapeTimeout: 10s
+  # Дополнительные метки, если Prometheus ограничен serviceMonitorSelector-ом.
+  labels: {}

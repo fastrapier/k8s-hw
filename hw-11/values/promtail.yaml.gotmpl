@@ -1,0 +1,16 @@
+# Promtail — DaemonSet: по одному поду на узел, читает /var/log/pods и отправляет
+# в Loki. Адрес — gateway чарта loki (Service loki-gateway, порт 80).
+config:
+  clients:
+    - url: http://loki-gateway.{{ .Values.namespace }}.svc.cluster.local/loki/api/v1/push
+
+# Свои метрики promtail тоже отдаёт Prometheus — видно, сколько строк отправлено.
+serviceMonitor:
+  enabled: true
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    memory: 192Mi

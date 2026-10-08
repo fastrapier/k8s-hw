@@ -1,0 +1,22 @@
+{{/*
+Service обязан лежать в namespace контроллера: selector сопоставляет поды только
+в своём namespace. Поэтому релиз живёт в k8s-hw11, а этот объект — в ingress-nginx.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ingress-metrics.fullname" . }}
+  namespace: {{ .Values.controller.namespace }}
+  labels:
+    {{- include "ingress-metrics.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: {{ .Values.controller.metricsPort }}
+      # Порт 10254 не объявлен в containerPorts деплоймента addon-а, поэтому
+      # targetPort задаём числом, а не именем.
+      targetPort: {{ .Values.controller.metricsPort }}
+      protocol: TCP
+  selector:
+    {{- toYaml .Values.controller.selectorLabels | nindent 4 }}

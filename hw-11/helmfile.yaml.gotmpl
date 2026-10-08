@@ -1,0 +1,75 @@
+# helmfile описывает весь стек мониторинга декларативно: репозитории, версии чартов,
+# values и порядок установки. Разворачивается одной командой `helmfile apply`.
+
+repositories:
+  - name: prometheus-community
+    url: https://prometheus-community.github.io/helm-charts
+  - name: grafana
+    url: https://grafana.github.io/helm-charts
+
+environments:
+  default:
+    values:
+      - namespace: k8s-hw11
+        # minikube addon ingress всегда разворачивает контроллер в этом namespace
+        ingressNamespace: ingress-nginx
+        hosts:
+          prometheus: prometheus-hw11.local
+          alertmanager: alertmanager-hw11.local
+          grafana: grafana-hw11.local
+
+---
+
+helmDefaults:
+  wait: true
+  timeout: 900
+  createNamespace: true
+  atomic: false
+
+releases:
+  # Часть 1: Prometheus Operator + Prometheus + Alertmanager + node-exporter + kube-state-metrics
+  - name: kube-prometheus-stack
+    namespace: {{ .Values.namespace }}
+    chart: prometheus-community/kube-prometheus-stack
+    version: 89.2.3
+    values:
+      - values/kube-prometheus-stack.yaml.gotmpl
+
+  # Часть 1: метрики ингресса — Service на порт 10254 контроллера + ServiceMonitor.
+  # Зависит от stack-а: ServiceMonitor — это CRD из Prometheus Operator.
+  - name: ingress-metrics
+    namespace: {{ .Values.namespace }}
+    chart: ./charts/ingress-metrics
+    needs:
+      - {{ .Values.namespace }}/kube-prometheus-stack
+    values:
+      - values/ingress-metrics.yaml.gotmpl
+
+  # Часть 2: хранилище логов
+  - name: loki
+    namespace: {{ .Values.namespace }}
+    chart: grafana/loki
+    version: 7.3.0
+    values:
+      - values/loki.yaml
+
+  # Часть 2: агент сбора логов на каждом узле
+  - name: promtail
+    namespace: {{ .Values.namespace }}
+    chart: grafana/promtail
+    version: 6.17.1
+    needs:
+      - {{ .Values.namespace }}/loki
+    values:
+      - values/promtail.yaml.gotmpl
+
+  # Часть 3: Grafana — datasources, дашборды, SMTP и алертинг задаются provisioning-ом
+  - name: grafana
+    namespace: {{ .Values.namespace }}
+    chart: grafana/grafana
+    version: 10.5.15
+    needs:
+      - {{ .Values.namespace }}/kube-prometheus-stack
+      - {{ .Values.namespace }}/loki
+    values:
+      - values/grafana.yaml.gotmpl
