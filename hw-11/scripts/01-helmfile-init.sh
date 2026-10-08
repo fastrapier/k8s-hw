@@ -32,20 +32,19 @@ echo "[INFO] Ожидание готовности ingress-nginx..."
 kubectl rollout status deployment/ingress-nginx-controller \
   -n "$INGRESS_NAMESPACE" --timeout=300s
 
-# Контроллер отдаёт /metrics на 10254, потому что --enable-metrics по умолчанию true
-# и манифест addon-а его не выключает. Если когда-нибудь выключат — метрик не будет,
-# поэтому проверяем явно.
-if kubectl get deployment ingress-nginx-controller -n "$INGRESS_NAMESPACE" \
-  -o jsonpath='{.spec.template.spec.containers[0].args}' 2>/dev/null | grep -q 'enable-metrics=false'; then
-  echo "[WARN] У контроллера ingress-nginx метрики выключены (--enable-metrics=false)."
-  echo "       Включаю метрики на :10254"
-  PATCH="$(kubectl get deployment ingress-nginx-controller -n "$INGRESS_NAMESPACE" -o json \
-    | jq -c '[{op: "replace", path: "/spec/template/spec/containers/0/args", value: (.spec.template.spec.containers[0].args | map(if . == "--enable-metrics=false" then "--enable-metrics=true" else . end))}]')"
+# /metrics может отдавать метрики процесса при выключенном сборе метрик NGINX.
+# Для счётчика запросов нужен явный --enable-metrics=true.
+ARGS="$(kubectl get deployment ingress-nginx-controller -n "$INGRESS_NAMESPACE" \
+  -o json | jq -c '.spec.template.spec.containers[0].args')"
+if jq -e 'any(.[]; . == "--enable-metrics=true" or . == "--enable-metrics")' \
+  <<< "$ARGS" >/dev/null; then
+  echo "[OK] Метрики ingress-nginx включены (порт 10254)"
+else
+  echo "[INFO] Включаю сбор метрик NGINX (--enable-metrics=true)"
+  PATCH="$(jq -c '[{op: "replace", path: "/spec/template/spec/containers/0/args", value: (map(select(. != "--enable-metrics" and (startswith("--enable-metrics=") | not))) + ["--enable-metrics=true"])}]' <<< "$ARGS")"
   kubectl patch deployment ingress-nginx-controller -n "$INGRESS_NAMESPACE" --type=json \
     -p="$PATCH"
   kubectl rollout status deployment/ingress-nginx-controller -n "$INGRESS_NAMESPACE" --timeout=300s
-else
-  echo "[OK] Метрики ingress-nginx включены (порт 10254)"
 fi
 
 echo ""

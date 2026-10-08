@@ -31,8 +31,22 @@ echo "[INFO] Prometheus API: $BASE"
 
 echo ""
 echo "=== Состояние таргета ingress-metrics ==="
-http_request -fsS --max-time 15 --get "$BASE/api/v1/targets" --data-urlencode 'state=active' \
-  | python3 "$RENDER" prom-targets
+TARGET_UP=false
+for attempt in 1 2 3 4; do
+  if http_request -fsS --max-time 15 --get "$BASE/api/v1/targets" --data-urlencode 'state=active' \
+    | python3 "$RENDER" prom-targets; then
+    TARGET_UP=true
+    break
+  fi
+  if [ "$attempt" -lt 4 ]; then
+    echo "[INFO] Жду успешный scrape ingress-metrics (30s)..."
+    sleep 30
+  fi
+done
+if [ "$TARGET_UP" != true ]; then
+  echo "[ERROR] Таргет ingress-metrics не перешёл в UP. Проверьте lastError выше." >&2
+  exit 1
+fi
 
 prom_query() {
   echo "--- $1"

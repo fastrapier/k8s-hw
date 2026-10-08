@@ -17,7 +17,7 @@
 │   │  (minikube addon ingress)    │            grafana-hw11.local                     │
 │   │                              │                                                   │
 │   │  :80/:443  трафик            │                                                   │
-│   │  :10254    /metrics ◄────────┼───┐  --enable-metrics=true по умолчанию            │
+│   │  :10254    /metrics ◄────────┼───┐  --enable-metrics=true, шаг 01                 │
 │   └──────────────────────────────┘   │                                               │
 │   ┌──────────────────────────────┐   │ Service ingress-metrics :10254                │
 │   │ Service ingress-metrics      │───┘ (свой чарт charts/ingress-metrics)            │
@@ -236,8 +236,11 @@ Prometheus их не соскрейпит: таргеты вечно висят 
 
 Ingress-nginx отдаёт метрики на порту **10254** — это внутренний HTTP-сервер контроллера,
 на нём же живут `/healthz` (его используют пробы) и `/nginx_status`. Флаг
-`--enable-metrics` по умолчанию `true`, и манифест addon-а minikube его не выключает,
-так что метрики уже есть — не хватает только того, кто их соберёт.
+`--enable-metrics` у ingress-nginx v1.15.1 по умолчанию `false`
+([исходный код контроллера](https://github.com/kubernetes/ingress-nginx/blob/controller-v1.15.1/pkg/flags/flags.go#L156)).
+Шаг `01-helmfile-init.sh` явно включает его и ждёт завершения rollout.
+Успешный scrape `/metrics` сам по себе не подтверждает наличие метрик запросов nginx:
+`03-check-metrics.sh` ждёт таргет `UP` и проверяет `nginx_ingress_controller_requests`.
 
 Две тонкости, из-за которых понадобился свой мини-чарт:
 
