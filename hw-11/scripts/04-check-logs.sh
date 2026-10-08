@@ -19,7 +19,8 @@ echo "[INFO] Loki API: $BASE (port-forward на svc/loki-gateway)"
 
 echo ""
 echo "=== Готовность Loki ==="
-curl -fsS --max-time 15 "$BASE/ready" || echo "  (Loki ещё не ready)"
+# ReadinessProbe Loki проверяет /ready на порту 3100; gateway этот путь не проксирует.
+kubectl rollout status statefulset/loki -n "$NAMESPACE" --timeout=120s
 
 echo ""
 echo "=== Метки в Loki ==="
